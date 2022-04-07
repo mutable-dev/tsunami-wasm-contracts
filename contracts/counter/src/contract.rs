@@ -39,63 +39,46 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => try_increment(deps),
-        ExecuteMsg::Reset { count } => try_reset(deps, info, count),
-        ExecuteMsg::UpdateOwner { owner } => try_update_owner(deps, info, owner),
+        ExecuteMsg::Swap { token_to_swap_from, token_to_swap_to } => try_swap(deps, info, token_to_swap_from, token_to_swap_to),
+        ExecuteMsg::Mint { token_to_deposit } => try_mint(deps, info, token_to_deposit),
+        ExecuteMsg::Burn { token_to_burn } => try_burn(deps, info, token_to_burn),
     }
 }
 
-pub fn try_increment(deps: DepsMut) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        state.count += 1;
-        Ok(state)
-    })?;
-
-    Ok(Response::new().add_attribute("method", "try_increment"))
-}
-pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        if info.sender != state.owner {
-            return Err(ContractError::Unauthorized {});
-        }
-        state.count = count;
-        Ok(state)
-    })?;
-    Ok(Response::new().add_attribute("method", "reset"))
-}
-
-pub fn try_update_owner(
-    deps: DepsMut,
-    info: MessageInfo,
-    owner: String,
+pub fn try_swap(
+    deps: DepsMut, 
+    info: MessageInfo, 
+    token_to_swap_from: String,
+    token_to_swap_to: String,
 ) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        if info.sender != state.owner {
-            return Err(ContractError::Unauthorized {});
-        }
-        state.owner = Addr::unchecked(owner);
-        Ok(state)
-    })?;
-    Ok(Response::new().add_attribute("method", "update_owner"))
+    Ok(Response::new().add_attribute("method", "swap"))
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
-        QueryMsg::GetOwner {} => to_binary(&query_owner(deps)?),
-    }
+pub fn try_mint(deps: DepsMut, info: MessageInfo, token_to_deposit: String) -> Result<Response, ContractError> {
+    Ok(Response::new().add_attribute("method", "mint"))
 }
 
-fn query_count(deps: Deps) -> StdResult<CountResponse> {
-    let state = STATE.load(deps.storage)?;
-    Ok(CountResponse { count: state.count })
+pub fn try_burn( deps: DepsMut, info: MessageInfo, token_to_burn: String) -> Result<Response, ContractError> {
+    Ok(Response::new().add_attribute("method", "burn"))
 }
 
-fn query_owner(deps: Deps) -> StdResult<OwnerResponse> {
-    let state = STATE.load(deps.storage)?;
-    Ok(OwnerResponse { owner: state.owner.to_string() })
-}
+// #[cfg_attr(not(feature = "library"), entry_point)]
+// pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+//     match msg {
+//         QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
+//         QueryMsg::GetOwner {} => to_binary(&query_owner(deps)?),
+//     }
+// }
+
+// fn query_count(deps: Deps) -> StdResult<CountResponse> {
+//     let state = STATE.load(deps.storage)?;
+//     Ok(CountResponse { count: state.count })
+// }
+
+// fn query_owner(deps: Deps) -> StdResult<OwnerResponse> {
+//     let state = STATE.load(deps.storage)?;
+//     Ok(OwnerResponse { owner: state.owner.to_string() })
+// }
 
 #[cfg(test)]
 mod tests {
@@ -113,81 +96,29 @@ mod tests {
         // we can just call .unwrap() to assert this was a success
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
-
-        // it worked, let's query the state
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(17, value.count);
     }
 
     #[test]
-    fn increment() {
+    fn mint_burn_swap_mocks() {
         let mut deps = mock_dependencies(&coins(2, "token"));
 
         let msg = InstantiateMsg { count: 17 };
         let info = mock_info("creator", &coins(2, "token"));
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        // beneficiary can release it
-        let info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Increment {};
+        let info = mock_info("creator", &coins(2, "token"));
+        let msg = ExecuteMsg::Swap { token_to_swap_from: "UST".to_string(), token_to_swap_to: "LUNA".to_string() };
         let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!("swap".to_string(), _res.attributes[0].value);
 
-        // should increase counter by 1
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn update_owner() {
-        let mut deps = mock_dependencies(&coins(2, "token"));
-
-        let msg = InstantiateMsg { count: 17 };
         let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // should have owner of creator
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetOwner {}).unwrap();
-        let value: OwnerResponse = from_binary(&res).unwrap();
-        assert_eq!("creator", value.owner);
-
-        // beneficiary can release it
-        let info = mock_info("creator", &coins(2, "token"));
-        let msg = ExecuteMsg::UpdateOwner { owner: "anyone".to_string() };
+        let msg = ExecuteMsg::Mint { token_to_deposit: "UST".to_string() };
         let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!("mint".to_string(), _res.attributes[0].value);
 
-        // should have owner of anyone now
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetOwner {}).unwrap();
-        let value: OwnerResponse = from_binary(&res).unwrap();
-        assert_eq!("anyone", value.owner);
-    }
-
-    #[test]
-    fn reset() {
-        let mut deps = mock_dependencies(&coins(2, "token"));
-
-        let msg = InstantiateMsg { count: 17 };
         let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let unauth_info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-        match res {
-            Err(ContractError::Unauthorized {}) => {}
-            _ => panic!("Must return unauthorized error"),
-        }
-
-        // only the original creator can reset the counter
-        let auth_info = mock_info("creator", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-
-        // should now be 5
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(5, value.count);
+        let msg = ExecuteMsg::Burn { token_to_burn: "UST".to_string()};
+        let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!("burn".to_string(), _res.attributes[0].value);
     }
 }
