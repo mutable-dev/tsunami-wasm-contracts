@@ -1,2 +1,0 @@
-cargo:rustc-env=TYPENUM_BUILD_CONSTS=/Users/alvarozamora/Rust/projects/Terra/tsunami-contracts/contracts/counter/target/rls/debug/build/typenum-d5cfdc67e21d59c3/out/consts.rs
-cargo:rustc-env=TYPENUM_BUILD_OP=/Users/alvarozamora/Rust/projects/Terra/tsunami-contracts/contracts/counter/target/rls/debug/build/typenum-d5cfdc67e21d59c3/out/op.rs

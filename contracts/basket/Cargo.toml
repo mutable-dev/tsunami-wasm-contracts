@@ -43,8 +43,9 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 cosmwasm-std = { version = "0.16.2" }
 cosmwasm-storage = { version = "0.16.0" }
 cosmwasm-bignumber = { version = "2.2.0"}
-cw-storage-plus = "0.8.0"
+cw-storage-plus = "0.8.1"
 cw2 = "0.8.1"
+cw20 = { version = "0.8.1" }
 schemars = "0.8.3"
 serde = { version = "1.0.127", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.26" }
