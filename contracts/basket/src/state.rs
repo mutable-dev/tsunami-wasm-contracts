@@ -2,13 +2,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Addr, Uint128};
-use cw_storage_plus::Item;
+use cw_storage_plus::{Item, Map};
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Basket {
 	/// Assets
-	pub assets: Map<Addr, (Asset, Oracle)>,
+	pub assets: Vec<(Addr, Asset, Oracle)>,
 	/// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -36,7 +36,7 @@ pub struct Basket {
 /// Represents whitelisted assets on the dex
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Asset {
-		/// Token address of the available asset
+	/// Token address of the available asset
 	pub token_address: Addr,
 	/// the decimals for the token
 	pub token_decimals: Uint128,
@@ -69,7 +69,79 @@ pub struct Asset {
 	/// Represents the unoccupied + occupied amount of assets in the pool for trading 
 	/// does not include fee_reserves
 	pub pool_reserves: Uint128,
+}
 
+impl Asset {
+	pub fn new(
+		token_address: Addr,
+		token_weight: Uint128,
+		min_profit_basis_points: Uint128,
+		max_lptoken_amount: Uint128,
+		stable_token: bool,
+		shortable_token: bool,
+		oracle_address: Addr,
+		backup_oracle_address: Addr,
+	) -> Self {
+		
+		// TODO: query CW20 for decimals
+		let token_decimals = Uint128::from(8_u32);
+
+		// TODO: Fix these, if needed.
+		let cumulative_funding_rate = Uint128::default();
+		let last_funding_time = Uint128::default();
+		let net_protocol_liabilities = Uint128::default();
+		let global_short_size = Uint128::default();
+		let occupied_reserves = Uint128::default();
+		let fee_reserves = Uint128::default();
+		let pool_reserves = Uint128::default();
+
+		Asset {
+			/// Token address of the available asset
+			token_address,
+			/// the decimals for the token
+			token_decimals,
+			/// The weight of this token in the LP 
+			token_weight,
+			/// min about of profit a position needs to be in to take profit before time
+			min_profit_basis_points,
+			/// maximum amount of this token that can be in the pool
+			max_lptoken_amount,
+			/// Flag for whether this is a stable token
+			stable_token,
+			/// Flag for whether this asset is shortable
+			shortable_token,
+			/// The cumulative funding rate for the asset
+			cumulative_funding_rate,
+			/// Last time the funding rate was updated
+			last_funding_time,
+			/// Account with price oracle data on the asset
+			oracle_address,
+			/// Backup account with price oracle data on the asset
+			backup_oracle_address,
+			/// Global size of shorts denominated in kind
+			global_short_size,
+			/// Represents the total outstanding obligations of the protocol (position - size) for the asset
+			net_protocol_liabilities,
+			/// Assets that are reserved and having positions trading against them
+			occupied_reserves,
+			/// Represents how much in reserves the pool owns of the available asset from fees
+			fee_reserves,
+			/// Represents the unoccupied + occupied amount of assets in the pool for trading 
+			/// does not include fee_reserves
+			pool_reserves,
+		}
+	}
+}
+
+
+
+/// Represents whitelisted assets on the dex
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Oracle {
+	/// This is a fake price
+	pub price: Uint128,
+	/// Boolean
+	pub valid: bool,
 }
 
 pub const BASKET: Item<Basket> = Item::new("basket");

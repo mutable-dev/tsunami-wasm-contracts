@@ -1,0 +1,10 @@
+/Users/alvarozamora/Rust/projects/Terra/tsunami-contracts/contracts/counter/target/rls/debug/deps/ed25519_zebra-3b3b7c05fd70c2fd.rmeta: /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/lib.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/batch.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/error.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/signature.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/signing_key.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/verification_key.rs
+
+/Users/alvarozamora/Rust/projects/Terra/tsunami-contracts/contracts/counter/target/rls/debug/deps/ed25519_zebra-3b3b7c05fd70c2fd.d: /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/lib.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/batch.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/error.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/signature.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/signing_key.rs /Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/verification_key.rs
+
+/Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/lib.rs:
+/Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/batch.rs:
+/Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/error.rs:
+/Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/signature.rs:
+/Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/signing_key.rs:
+/Users/alvarozamora/.cargo/registry/src/github.com-1ecc6299db9ec823/ed25519-zebra-2.2.0/src/verification_key.rs:
