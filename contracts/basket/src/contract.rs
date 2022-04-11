@@ -1,4 +1,8 @@
-use crate::error::ContractError;
+use crate::{
+    error::ContractError,
+    msg::*,
+    state::Asset,
+};
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
@@ -6,6 +10,8 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use cw2::set_contract_version;
+
+
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "tsunami-basket";
@@ -23,9 +29,14 @@ pub fn instantiate(
     // Check assets + Ensure no repeated assets
     check_assets();
 
+    let mut assets = Vec::<Asset>::new();
+    for asset in msg.assets {
+        assets.push(Asset::new(asset));
+    }
+
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-
+    Ok(Response::new())
 }
 
 

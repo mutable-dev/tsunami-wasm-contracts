@@ -8,7 +8,7 @@ use cw_storage_plus::{Item, Map};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Basket {
 	/// Assets
-	pub assets: Vec<(Addr, Asset, Oracle)>,
+	pub assets: Vec<Asset>,
 	/// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -72,16 +72,27 @@ pub struct Asset {
 }
 
 impl Asset {
-	pub fn new(
-		token_address: Addr,
-		token_weight: Uint128,
-		min_profit_basis_points: Uint128,
-		max_lptoken_amount: Uint128,
-		stable_token: bool,
-		shortable_token: bool,
-		oracle_address: Addr,
-		backup_oracle_address: Addr,
+	pub fn new(asset: (Addr, Uint128, Uint128, Uint128, bool, bool, Addr, Addr)
+		// token_address: Addr,
+		// token_weight: Uint128,
+		// min_profit_basis_points: Uint128,
+		// max_lptoken_amount: Uint128,
+		// stable_token: bool,
+		// shortable_token: bool,
+		// oracle_address: Addr,
+		// backup_oracle_address: Addr,
 	) -> Self {
+		
+		// Unpack tuple
+		let token_address = asset.0;
+		let token_weight = asset.1;
+		let min_profit_basis_points = asset.2;
+		let max_lptoken_amount = asset.3;
+		let stable_token = asset.4;
+		let shortable_token = asset.5;
+		let oracle_address = asset.6;
+		let backup_oracle_address = asset.7;
+
 		
 		// TODO: query CW20 for decimals
 		let token_decimals = Uint128::from(8_u32);
