@@ -8,29 +8,7 @@ use crate::asset::AssetInfo;
 pub struct InstantiateMsg {
     
     /// The list of assets in the basket
-<<<<<<< HEAD
-    pub assets: Vec<(
-        // token info: 
-        AssetInfo,
-        // token_weight: 
-        Uint128,
-        //min_profit_basis_points: 
-        Uint128,
-        //max_lptoken_amount: 
-        Uint128,
-        //stable_token: 
-        bool,
-        //shortable_token: 
-        bool,
-        //oracle_address: 
-        Addr,
-        //backup_oracle_address: 
-        Addr
-    )>,
-
-=======
     pub assets: Vec<InstantiateAssetInfo>,
->>>>>>> c05cf2b7eaf05c6ee41fdeb9956aed1d6e383a09
     /// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -78,13 +56,11 @@ pub struct CountResponse {
     pub count: u8,
 }
 
-<<<<<<< HEAD
 #[derive(PartialEq,Clone,Default)]
 pub struct MsgInstantiateContractResponse {
     // message fields
     pub contract_address: String,
     pub data: Vec<u8>,
-=======
 /// This structure describes the parameters used for instantiating
 /// the assets in an LP
 /// InstantiateAssetInfo
@@ -107,7 +83,6 @@ pub struct InstantiateAssetInfo {
     pub oracle_address: Addr,
     /// Backup oracle address for the asset
     pub backup_oracle_address: Addr,
->>>>>>> c05cf2b7eaf05c6ee41fdeb9956aed1d6e383a09
 }
 
 

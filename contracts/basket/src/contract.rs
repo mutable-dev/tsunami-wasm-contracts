@@ -192,28 +192,7 @@ fn build_assets(
     assets
 }
 
-<<<<<<< HEAD
-fn check_assets(assets: &Vec<(      
-    // asset info
-    AssetInfo,
-    // token_weight: 
-    Uint128,
-    //min_profit_basis_points: 
-    Uint128,
-    //max_lptoken_amount: 
-    Uint128,
-    //stable_token: 
-    bool,
-    //shortable_token: 
-    bool,
-    //oracle_address: 
-    Addr,
-    //backup_oracle_address: 
-    Addr
-)>) -> Result<u64, ContractError>{
-=======
 fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError>{
->>>>>>> c05cf2b7eaf05c6ee41fdeb9956aed1d6e383a09
     let mut asset_names: Vec<String> = Vec::new();
     for asset in assets {
         if asset_names.contains(&asset.address.to_string()) {
