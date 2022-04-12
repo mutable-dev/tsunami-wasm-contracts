@@ -192,6 +192,7 @@ fn build_assets(
     assets
 }
 
+<<<<<<< HEAD
 fn check_assets(assets: &Vec<(      
     // asset info
     AssetInfo,
@@ -210,12 +211,42 @@ fn check_assets(assets: &Vec<(
     //backup_oracle_address: 
     Addr
 )>) -> Result<u64, ContractError>{
+=======
+fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError>{
+>>>>>>> c05cf2b7eaf05c6ee41fdeb9956aed1d6e383a09
     let mut asset_names: Vec<String> = Vec::new();
     for asset in assets {
-        if asset_names.contains(&asset.0.to_string()) {
+        if asset_names.contains(&asset.address.to_string()) {
             return Err(ContractError::DuplicateAssetAssertion{})
         }
-        asset_names.push(asset.0.to_string());
+        asset_names.push(asset.address.to_string());
     }
     Ok(1)
+}
+
+/// ## Description
+/// Exposes all the queries available in the contract.
+/// ## Params
+/// * **deps** is an object of type [`Deps`].
+///
+/// * **_env** is an object of type [`Env`].
+///
+/// * **msg** is an object of type [`QueryMsg`].
+///
+/// ## Queries
+/// * **QueryMsg::Basket {}** Returns information about the basket in an object of type [`Basket`].
+#[cfg_attr(not(feature = "library"), entry_point)]
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Basket {} => to_binary(&query_basket(deps)?),
+    }
+}
+
+/// ## Description
+/// Returns information about the basket contract in an object of type [`BASKET`].
+/// ## Params
+/// * **deps** is an object of type [`Deps`].
+pub fn query_basket(deps: Deps) -> StdResult<Basket> {
+    BASKET.load(deps.storage)
 }

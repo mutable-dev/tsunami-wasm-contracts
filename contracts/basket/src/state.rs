@@ -6,6 +6,7 @@ use cw_storage_plus::{Item, Map};
 
 use crate::msg::InstantiateMsg;
 use crate::asset::{Asset, AssetInfo};
+use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -48,7 +49,7 @@ pub struct BasketAsset {
 	/// min about of profit a position needs to be in to take profit before time
 	pub min_profit_basis_points: Uint128,
 	/// maximum amount of this token that can be in the pool
-	pub max_lptoken_amount: Uint128,
+	pub max_asset_amount: Uint128,
 	/// Flag for whether this is a stable token
 	pub stable_token: bool,
 	/// Flag for whether this asset is shortable
@@ -113,23 +114,23 @@ impl BasketAsset {
 			/// Static asset info about the token
 			info,
 			/// The weight of this token in the LP 
-			token_weight,
+			token_weight: assetInfo.weight,
 			/// min about of profit a position needs to be in to take profit before time
-			min_profit_basis_points,
+			min_profit_basis_points: assetInfo.min_profit_basis_points,
 			/// maximum amount of this token that can be in the pool
-			max_lptoken_amount,
+			max_asset_amount: assetInfo.max_asset_amount,
 			/// Flag for whether this is a stable token
-			stable_token,
+			stable_token: assetInfo.is_asset_stable,
 			/// Flag for whether this asset is shortable
-			shortable_token,
+			shortable_token: assetInfo.is_asset_shortable,
 			/// The cumulative funding rate for the asset
 			cumulative_funding_rate,
 			/// Last time the funding rate was updated
 			last_funding_time,
 			/// Account with price oracle data on the asset
-			oracle_address,
+			oracle_address: assetInfo.oracle_address,
 			/// Backup account with price oracle data on the asset
-			backup_oracle_address,
+			backup_oracle_address: assetInfo.backup_oracle_address,
 			/// Global size of shorts denominated in kind
 			global_short_size,
 			/// Represents the total outstanding obligations of the protocol (position - size) for the asset

@@ -8,6 +8,7 @@ use crate::asset::AssetInfo;
 pub struct InstantiateMsg {
     
     /// The list of assets in the basket
+<<<<<<< HEAD
     pub assets: Vec<(
         // token info: 
         AssetInfo,
@@ -27,6 +28,9 @@ pub struct InstantiateMsg {
         Addr
     )>,
 
+=======
+    pub assets: Vec<InstantiateAssetInfo>,
+>>>>>>> c05cf2b7eaf05c6ee41fdeb9956aed1d6e383a09
     /// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -64,8 +68,8 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    // GetCount returns the current count as a json-encoded number
-    GetCount {},
+    // Basket returns the basket as a json-encoded string
+    Basket {},
 }
 
 // We define a custom struct for each query response
@@ -74,15 +78,42 @@ pub struct CountResponse {
     pub count: u8,
 }
 
+<<<<<<< HEAD
 #[derive(PartialEq,Clone,Default)]
 pub struct MsgInstantiateContractResponse {
     // message fields
     pub contract_address: String,
     pub data: Vec<u8>,
+=======
+/// This structure describes the parameters used for instantiating
+/// the assets in an LP
+/// InstantiateAssetInfo
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct InstantiateAssetInfo {
+    /// Token address
+    pub address: Addr,
+    /// Token weight
+    pub weight: Uint128,
+    /// The minimum amount of profit a position with the asset needs
+    /// to be in before closing otherwise, no profit
+    pub min_profit_basis_points: Uint128,
+    /// Maximum amount of asset that can be held in the LP
+    pub max_asset_amount: Uint128,
+    /// If the asset is a stable token
+    pub is_asset_stable: bool,
+    /// If the asset can be shorted 
+    pub is_asset_shortable: bool,
+    /// Address of the oracle for the asset 
+    pub oracle_address: Addr,
+    /// Backup oracle address for the asset
+    pub backup_oracle_address: Addr,
+>>>>>>> c05cf2b7eaf05c6ee41fdeb9956aed1d6e383a09
 }
 
-/// This structure describes the parameters used for creating a token contract.
-/// TokenContract InstantiateMsg
+
+/// This structure describes the parameters used for a message 
+/// creating a LP Token. 
+/// InstantiateLpMsg
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateLpMsg {
     /// Token name
