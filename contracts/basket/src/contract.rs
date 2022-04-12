@@ -92,30 +92,13 @@ fn build_assets(
     assets
 }
 
-fn check_assets(assets: &Vec<(      
-    // token_address: 
-    Addr,
-    // token_weight: 
-    Uint128,
-    //min_profit_basis_points: 
-    Uint128,
-    //max_lptoken_amount: 
-    Uint128,
-    //stable_token: 
-    bool,
-    //shortable_token: 
-    bool,
-    //oracle_address: 
-    Addr,
-    //backup_oracle_address: 
-    Addr
-)>) -> Result<u64, ContractError>{
+fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError>{
     let mut asset_names: Vec<String> = Vec::new();
     for asset in assets {
-        if asset_names.contains(&asset.0.to_string()) {
+        if asset_names.contains(&asset.address.to_string()) {
             return Err(ContractError::DuplicateAssetAssertion{})
         }
-        asset_names.push(asset.0.to_string());
+        asset_names.push(asset.address.to_string());
     }
     Ok(1)
 }

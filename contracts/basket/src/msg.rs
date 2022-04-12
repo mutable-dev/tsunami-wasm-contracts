@@ -7,25 +7,7 @@ use cw20::{Cw20Coin, MinterResponse};
 pub struct InstantiateMsg {
     
     /// The list of assets in the basket
-    pub assets: Vec<(
-        // token_address: 
-        Addr,
-        // token_weight: 
-        Uint128,
-        //min_profit_basis_points: 
-        Uint128,
-        //max_lptoken_amount: 
-        Uint128,
-        //stable_token: 
-        bool,
-        //shortable_token: 
-        bool,
-        //oracle_address: 
-        Addr,
-        //backup_oracle_address: 
-        Addr
-    )>,
-
+    pub assets: Vec<InstantiateAssetInfo>,
     /// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -73,9 +55,34 @@ pub struct CountResponse {
     pub count: u8,
 }
 
+/// This structure describes the parameters used for instantiating
+/// the assets in an LP
+/// InstantiateAssetInfo
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct InstantiateAssetInfo {
+    /// Token address
+    pub address: Addr,
+    /// Token weight
+    pub weight: Uint128,
+    /// The minimum amount of profit a position with the asset needs
+    /// to be in before closing otherwise, no profit
+    pub min_profit_basis_points: Uint128,
+    /// Maximum amount of asset that can be held in the LP
+    pub max_asset_amount: Uint128,
+    /// If the asset is a stable token
+    pub is_asset_stable: bool,
+    /// If the asset can be shorted 
+    pub is_asset_shortable: bool,
+    /// Address of the oracle for the asset 
+    pub oracle_address: Addr,
+    /// Backup oracle address for the asset
+    pub backup_oracle_address: Addr,
+}
 
-/// This structure describes the parameters used for creating a token contract.
-/// TokenContract InstantiateMsg
+
+/// This structure describes the parameters used for a message 
+/// creating a LP Token. 
+/// InstantiateLpMsg
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateLpMsg {
     /// Token name

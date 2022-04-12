@@ -3,7 +3,6 @@ use crate::contract::{
     query_basket,
  };
 use crate::mock_querier::mock_dependencies;
-// use crate::response::MsgInstantiateContractResponse;
 use crate::{
     msg::*,
     state::{Basket, Asset},
@@ -27,26 +26,16 @@ fn proper_initialization() {
     )]);
 
     let mut assets = Vec::new();
-    assets.push(
-        (
-            // token_address: 
-            Addr::unchecked("name"),
-            // token_weight: 
-            Uint128::new(1),
-            //min_profit_basis_points: 
-            Uint128::new(1),
-            //max_lptoken_amount: 
-            Uint128::new(1),
-            //stable_token: 
-            true,
-            //shortable_token: 
-            true,
-            //oracle_address: 
-            Addr::unchecked("name"),
-            //backup_oracle_address: 
-            Addr::unchecked("name")
-        )
-    );
+    assets.push(InstantiateAssetInfo{
+        address: Addr::unchecked("name"),
+        weight: Uint128::new(1),
+        min_profit_basis_points: Uint128::new(1),
+        max_asset_amount: Uint128::new(1),
+        is_asset_stable: true,
+        is_asset_shortable: true,
+        oracle_address: Addr::unchecked("oracle"),
+        backup_oracle_address: Addr::unchecked("backup_oracle"),
+    });
     let msg = InstantiateMsg {
         assets: assets,
         /// Name of Basket
@@ -113,11 +102,11 @@ fn proper_initialization() {
         token_address: Addr::unchecked("name"),
         token_weight: Uint128::new(1),
         min_profit_basis_points: Uint128::new(1),
-        max_lptoken_amount: Uint128::new(1),
+        max_asset_amount: Uint128::new(1),
         stable_token: true,
         shortable_token: true,
-        oracle_address: Addr::unchecked("name"),
-        backup_oracle_address: Addr::unchecked("name"),
+        oracle_address: Addr::unchecked("oracle"),
+        backup_oracle_address: Addr::unchecked("backup_oracle"),
         cumulative_funding_rate: Uint128::new(0),
         global_short_size: Uint128::new(0),
         net_protocol_liabilities: Uint128::new(0),
