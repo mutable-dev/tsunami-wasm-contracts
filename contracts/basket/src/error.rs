@@ -34,6 +34,9 @@ pub enum ContractError {
 
     #[error("Pair type mismatch. Check factory pair configs")]
     PairTypeMismatch {},
+
+    #[error("Duplicate asset provided")]
+    DuplicateAssetAssertion {},
 }
 
 impl From<OverflowError> for ContractError {

@@ -18,7 +18,7 @@ const CONTRACT_NAME: &str = "tsunami-basket";
 /// Contract version that is used for migration.
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-const INSTANTIATE_BUCKET_REPLY_ID: u64 = 1;
+const INSTANTIATE_BASKET_REPLY_ID: u64 = 1;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -29,7 +29,7 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     
     // Check assets + Ensure no repeated assets
-    check_assets();
+    check_assets(&msg.assets)?;
 
     // Set contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -79,7 +79,7 @@ pub fn instantiate(
             label: String::from("Tsunami LP Token"),
         }
         .into(),
-        id: INSTANTIATE_BUCKET_REPLY_ID,
+        id: INSTANTIATE_BASKET_REPLY_ID,
         gas_limit: None,
         reply_on: ReplyOn::Success,
     }];
@@ -89,4 +89,30 @@ pub fn instantiate(
 
 
 
-fn check_assets() {}
+fn check_assets(assets: &Vec<(      
+    // token_address: 
+    Addr,
+    // token_weight: 
+    Uint128,
+    //min_profit_basis_points: 
+    Uint128,
+    //max_lptoken_amount: 
+    Uint128,
+    //stable_token: 
+    bool,
+    //shortable_token: 
+    bool,
+    //oracle_address: 
+    Addr,
+    //backup_oracle_address: 
+    Addr
+)>) -> Result<u64, ContractError>{
+    let mut asset_names: Vec<String> = Vec::new();
+    for asset in assets {
+        if asset_names.contains(&asset.0.to_string()) {
+            return Err(ContractError::DuplicateAssetAssertion{})
+        }
+        asset_names.push(asset.0.to_string());
+    }
+    Ok(1)
+}
