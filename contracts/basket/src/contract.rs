@@ -103,6 +103,18 @@ fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError
     Ok(1)
 }
 
+/// ## Description
+/// Exposes all the queries available in the contract.
+/// ## Params
+/// * **deps** is an object of type [`Deps`].
+///
+/// * **_env** is an object of type [`Env`].
+///
+/// * **msg** is an object of type [`QueryMsg`].
+///
+/// ## Queries
+/// * **QueryMsg::Basket {}** Returns information about the basket in an object of type [`Basket`].
+#[cfg_attr(not(feature = "library"), entry_point)]
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -111,7 +123,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 /// ## Description
-/// Returns information about the pair contract in an object of type [`PairInfo`].
+/// Returns information about the basket contract in an object of type [`BASKET`].
 /// ## Params
 /// * **deps** is an object of type [`Deps`].
 pub fn query_basket(deps: Deps) -> StdResult<Basket> {
