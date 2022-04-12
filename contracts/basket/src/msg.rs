@@ -61,11 +61,15 @@ pub struct MsgInstantiateContractResponse {
     // message fields
     pub contract_address: String,
     pub data: Vec<u8>,
+}
+
 /// This structure describes the parameters used for instantiating
 /// the assets in an LP
 /// InstantiateAssetInfo
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateAssetInfo {
+    /// Asset Info
+    pub info: AssetInfo,
     /// Token address
     pub address: Addr,
     /// Token weight

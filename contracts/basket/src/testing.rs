@@ -5,7 +5,8 @@ use crate::contract::{
 use crate::mock_querier::mock_dependencies;
 use crate::{
     msg::*,
-    state::{Basket, Asset},
+    state::{Basket, BasketAsset},
+    asset::{Asset, AssetInfo},
 };
 
 use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR};
@@ -25,8 +26,13 @@ fn proper_initialization() {
         &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::new(123u128))],
     )]);
 
+    // luna and ust info
+    let luna_info = AssetInfo::NativeToken{ denom: "luna".to_string() };
+    let ust_info = AssetInfo::NativeToken{ denom: "uust".to_string() };
+
     let mut assets = Vec::new();
     assets.push(InstantiateAssetInfo{
+        info: luna_info.clone(),
         address: Addr::unchecked("name"),
         weight: Uint128::new(1),
         min_profit_basis_points: Uint128::new(1),
@@ -98,8 +104,8 @@ fn proper_initialization() {
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(basket.name, "blue chip basket");
-    assert_eq!(basket.assets, vec![Asset{
-        token_address: Addr::unchecked("name"),
+    assert_eq!(basket.assets, vec![BasketAsset{
+        info: luna_info.clone(),
         token_weight: Uint128::new(1),
         min_profit_basis_points: Uint128::new(1),
         max_asset_amount: Uint128::new(1),
@@ -114,7 +120,6 @@ fn proper_initialization() {
         occupied_reserves: Uint128::new(0),
         pool_reserves: Uint128::new(0),
         fee_reserves: Uint128::new(0),
-        token_decimals: Uint128::new(8),
     }]);
     assert_eq!(basket.tax_basis_points, Uint128::new(1));
     assert_eq!(basket.stable_swap_fee_basis_points, Uint128::new(1));

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 
-use crate::msg::InstantiateMsg;
 use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
 
@@ -76,28 +75,8 @@ pub struct BasketAsset {
 }
 
 impl BasketAsset {
-	pub fn new(
-		asset: (AssetInfo, Uint128, Uint128, Uint128, bool, bool, Addr, Addr)
-		// token info: AssetInfo
-		// token_weight: Uint128,
-		// min_profit_basis_points: Uint128,
-		// max_lptoken_amount: Uint128,
-		// stable_token: bool,
-		// shortable_token: bool,
-		// oracle_address: Addr,
-		// backup_oracle_address: Addr,
-	) -> Self {
-		
-		// Unpack tuple
-		let info = asset.0;
-		let token_weight = asset.1;
-		let min_profit_basis_points = asset.2;
-		let max_lptoken_amount = asset.3;
-		let stable_token = asset.4;
-		let shortable_token = asset.5;
-		let oracle_address = asset.6;
-		let backup_oracle_address = asset.7;
-
+	pub fn new(asset_info: InstantiateAssetInfo) -> Self {
+	
 		// TODO: query CW20 for decimals
 		let token_decimals = Uint128::from(8_u32);
 
@@ -112,25 +91,25 @@ impl BasketAsset {
 
 		BasketAsset {
 			/// Static asset info about the token
-			info,
+			info: asset_info.info,
 			/// The weight of this token in the LP 
-			token_weight: assetInfo.weight,
+			token_weight: asset_info.weight,
 			/// min about of profit a position needs to be in to take profit before time
-			min_profit_basis_points: assetInfo.min_profit_basis_points,
+			min_profit_basis_points: asset_info.min_profit_basis_points,
 			/// maximum amount of this token that can be in the pool
-			max_asset_amount: assetInfo.max_asset_amount,
+			max_asset_amount: asset_info.max_asset_amount,
 			/// Flag for whether this is a stable token
-			stable_token: assetInfo.is_asset_stable,
+			stable_token: asset_info.is_asset_stable,
 			/// Flag for whether this asset is shortable
-			shortable_token: assetInfo.is_asset_shortable,
+			shortable_token: asset_info.is_asset_shortable,
 			/// The cumulative funding rate for the asset
 			cumulative_funding_rate,
 			/// Last time the funding rate was updated
 			last_funding_time,
 			/// Account with price oracle data on the asset
-			oracle_address: assetInfo.oracle_address,
+			oracle_address: asset_info.oracle_address,
 			/// Backup account with price oracle data on the asset
-			backup_oracle_address: assetInfo.backup_oracle_address,
+			backup_oracle_address: asset_info.backup_oracle_address,
 			/// Global size of shorts denominated in kind
 			global_short_size,
 			/// Represents the total outstanding obligations of the protocol (position - size) for the asset
