@@ -1,8 +1,12 @@
-use crate::contract::{ instantiate };
+use crate::contract::{ 
+    instantiate,
+    query_basket,
+ };
 use crate::mock_querier::mock_dependencies;
 // use crate::response::MsgInstantiateContractResponse;
 use crate::{
-    msg::*
+    msg::*,
+    state::{Basket, Asset},
 };
 
 use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR};
@@ -102,4 +106,35 @@ fn proper_initialization() {
             reply_on: ReplyOn::Success
         },]
     );
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(basket.name, "blue chip basket");
+    assert_eq!(basket.assets, vec![Asset{
+        token_address: Addr::unchecked("name"),
+        token_weight: Uint128::new(1),
+        min_profit_basis_points: Uint128::new(1),
+        max_lptoken_amount: Uint128::new(1),
+        stable_token: true,
+        shortable_token: true,
+        oracle_address: Addr::unchecked("name"),
+        backup_oracle_address: Addr::unchecked("name"),
+        cumulative_funding_rate: Uint128::new(0),
+        global_short_size: Uint128::new(0),
+        net_protocol_liabilities: Uint128::new(0),
+        last_funding_time: Uint128::new(0),
+        occupied_reserves: Uint128::new(0),
+        pool_reserves: Uint128::new(0),
+        fee_reserves: Uint128::new(0),
+        token_decimals: Uint128::new(8),
+    }]);
+    assert_eq!(basket.tax_basis_points, Uint128::new(1));
+    assert_eq!(basket.stable_swap_fee_basis_points, Uint128::new(1));
+    assert_eq!(basket.mint_burn_basis_points, Uint128::new(1));
+    assert_eq!(basket.swap_fee_basis_points, Uint128::new(1));
+    assert_eq!(basket.stable_swap_fee_basis_points, Uint128::new(1));
+    assert_eq!(basket.margin_fee_basis_points, Uint128::new(1));
+    assert_eq!(basket.liquidation_fee_usd, Uint128::new(1));
+    assert_eq!(basket.min_profit_time, Uint128::new(1));
+    assert_eq!(basket.total_weights, Uint128::new(1));
+    assert_eq!(basket.admin, Addr::unchecked("name"));
 }

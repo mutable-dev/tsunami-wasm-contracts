@@ -119,3 +119,18 @@ fn check_assets(assets: &Vec<(
     }
     Ok(1)
 }
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Basket {} => to_binary(&query_basket(deps)?),
+    }
+}
+
+/// ## Description
+/// Returns information about the pair contract in an object of type [`PairInfo`].
+/// ## Params
+/// * **deps** is an object of type [`Deps`].
+pub fn query_basket(deps: Deps) -> StdResult<Basket> {
+    BASKET.load(deps.storage)
+}
