@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 
+use crate::msg::InstantiateMsg;
+
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Basket {
@@ -144,6 +146,28 @@ impl Asset {
 	}
 }
 
+
+impl Basket {
+	pub fn new(
+		assets: Vec<Asset>,
+		msg: &InstantiateMsg,
+	) -> Self {
+		Basket {
+			assets,
+			name: msg.name.clone(),
+			tax_basis_points: msg.tax_basis_points,
+			stable_tax_basis_points: msg.stable_tax_basis_points,
+			mint_burn_basis_points: msg.mint_burn_basis_points,
+			swap_fee_basis_points: msg.swap_fee_basis_points,
+			stable_swap_fee_basis_points: msg.stable_swap_fee_basis_points,
+			margin_fee_basis_points: msg.margin_fee_basis_points,
+			liquidation_fee_usd: msg.liquidation_fee_usd,
+			min_profit_time: msg.min_profit_time,
+			total_weights: msg.total_weights,
+			admin: msg.admin.clone(),
+		}
+	}
+}
 
 
 /// Represents whitelisted assets on the dex

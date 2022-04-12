@@ -34,34 +34,31 @@ pub fn instantiate(
     // Set contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let mut assets = Vec::<Asset>::new();
-    for asset in msg.assets {
-        assets.push(Asset::new(asset));
-    }
+    // Build Assets from message
+    let assets: Vec<Asset> = build_assets(&msg);
 
-    let basket = Basket {
-        assets,
-        name: msg.name.clone(),
-	    tax_basis_points: msg.tax_basis_points,
-	    stable_tax_basis_points: msg.stable_tax_basis_points,
-	    mint_burn_basis_points: msg.mint_burn_basis_points,
-	    swap_fee_basis_points: msg.swap_fee_basis_points,
-	    stable_swap_fee_basis_points: msg.stable_swap_fee_basis_points,
-	    margin_fee_basis_points: msg.margin_fee_basis_points,
-	    liquidation_fee_usd: msg.liquidation_fee_usd,
-	    min_profit_time: msg.min_profit_time,
-	    total_weights: msg.total_weights,
-	    admin: msg.admin,
-    };
+    // Build Basket from Assets and parameters in message
+    let basket = Basket::new(assets, &msg);
 
+    // Store Basket in Item/Singleton
     BASKET.save(deps.storage, &basket)?;
 
-    
+    // SubMsg to Create the LP token contract
     let token_name = format!("{}-LP", &msg.name);
+    let sub_msg = instantiate_lp(&msg, env, token_name)?;
 
-    // create LP token
-    // Create the LP token contract
-    let sub_msg: Vec<SubMsg> = vec![SubMsg {
+    // Return success with response
+    Ok(Response::new().add_submessages(sub_msg))
+}
+
+
+
+fn instantiate_lp(
+    msg: &InstantiateMsg,
+    env: Env,
+    token_name: String,
+) -> Result<Vec<SubMsg>, ContractError> {
+    Ok(vec![SubMsg {
         msg: WasmMsg::Instantiate {
             code_id: msg.token_code_id,
             msg: to_binary(&InstantiateLpMsg {
@@ -73,21 +70,27 @@ pub fn instantiate(
                     minter: env.contract.address.to_string(),
                     cap: None,
                 }),
-            })?,
+            }).expect("failed to convert InstantiateLpMsg to binary."),
             funds: vec![],
             admin: None,
-            label: String::from("Tsunami LP Token"),
+            label: "Tsunami LP Token".to_string(),
         }
         .into(),
         id: INSTANTIATE_BASKET_REPLY_ID,
         gas_limit: None,
         reply_on: ReplyOn::Success,
-    }];
-    
-    Ok(Response::new().add_submessages(sub_msg))
+    }])
 }
 
-
+fn build_assets(
+    msg: &InstantiateMsg,
+) -> Vec<Asset> {
+    let mut assets = Vec::new();
+    for asset in msg.assets.clone() {
+        assets.push(Asset::new(asset));
+    }
+    assets
+}
 
 fn check_assets(assets: &Vec<(      
     // token_address: 
