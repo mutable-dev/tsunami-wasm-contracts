@@ -1,7 +1,7 @@
 use crate::{
     error::ContractError,
     msg::*,
-    asset::AssetInfo,
+    asset::{AssetInfo, Asset},
     state::{Basket, BasketAsset, BASKET},
 };
 use cosmwasm_bignumber::{Decimal256, Uint256};
@@ -62,14 +62,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::DepositLiquidity {} => Ok(Response::new()),
-        ExecuteMsg::WithdrawLiquidity { cw20msg } => withdraw_liquidity(
-            deps,
-            env,
-            info,
-            Addr::unchecked(cw20msg.sender),
-            cw20msg.amount,
-            cw20msg.msg
-        ),
+        ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
     }
 }
 
@@ -87,12 +80,12 @@ pub fn execute(
 //             StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
 //         })?;
 
-//     config.pair_info.liquidity_token =
+//     basket.lp_token_address =
 //         addr_validate_to_lower(deps.api, res.get_contract_address())?;
 
-//     CONFIG.save(deps.storage, &config)?;
+//     CONFIG.save(deps.storage, &basket)?;
 
-//     Ok(Response::new().add_attribute("liquidity_token_addr", config.pair_info.liquidity_token))
+//     Ok(Response::new().add_attribute("liquidity_token_addr", basket.lp_token_address))
 // }
 
 pub fn withdraw_liquidity(
@@ -101,10 +94,11 @@ pub fn withdraw_liquidity(
     info: MessageInfo,
     sender: Addr,
     amount: Uint128,
-    msg: Binary,
+    basket_asset: BasketAsset,
 ) -> Result<Response, ContractError> {
+    
     // Load Basket
-    let mut basket: Basket = BASKET.load(deps.storage).unwrap();
+    let basket: Basket = BASKET.load(deps.storage).unwrap();
 
     // Abort if not from basket lp token contract
     if info.sender != basket.lp_token_address {
@@ -113,8 +107,8 @@ pub fn withdraw_liquidity(
 
     // TODO: encode which asset to withdraw in msg (may not be possible. may need some reworking)
     // For now, just send back luna always 
-    let asset_info = AssetInfo::NativeToken{ denom: "luna".to_string() }; // TODO; replace with some function of Binary msg
-    let refund_asset = basket.withdraw_amount(amount, asset_info);//get_share_in_assets(&pools, amount, total_share);
+    let asset_info: AssetInfo = basket_asset.info;
+    let refund_asset = basket.withdraw_amount(amount, asset_info); // get_share_in_assets(&pools, amount, total_share);
 
     // Update the pool info
     let messages: Vec<CosmosMsg> = vec![
@@ -147,8 +141,8 @@ pub fn withdraw_liquidity(
 fn validate_addr(
     api: &dyn Api,
     sender: &String
-) -> Result<String, ContractError> {
-    Ok(sender.clone())
+) -> Result<Addr, ContractError> {
+    Ok(Addr::unchecked(sender.clone()))
 }
 
 
@@ -228,4 +222,230 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 /// * **deps** is an object of type [`Deps`].
 pub fn query_basket(deps: Deps) -> StdResult<Basket> {
     BASKET.load(deps.storage)
+}
+
+
+
+/// ## Description
+/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+/// If the template is not found in the received message, then an [`ContractError`] is returned,
+/// otherwise it returns the [`Response`] with the specified attributes if the operation was successful.
+/// ## Params
+/// * **deps** is an object of type [`DepsMut`].
+///
+/// * **env** is an object of type [`Env`].
+///
+/// * **info** is an object of type [`MessageInfo`].
+///
+/// * **cw20_msg** is an object of type [`Cw20ReceiveMsg`]. This is the CW20 message that has to be processed.
+pub fn receive_cw20(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    let contract_addr = info.sender.clone();
+    match from_binary(&cw20_msg.msg) {
+        Ok(Cw20HookMsg::Swap {
+            belief_price,
+            max_spread,
+            to,
+        }) => {
+
+            // Only asset contract can execute this message
+            let mut authorized: bool = false;
+            let basket = BASKET.load(deps.storage)?;
+
+            for asset in basket.assets {
+                if let AssetInfo::Token { contract_addr, .. } = &asset.info {
+                    if contract_addr == &info.sender {
+                        authorized = true;
+                    }
+                }
+            }
+
+            if !authorized {
+                return Err(ContractError::Unauthorized {});
+            }
+
+            let to_addr = if let Some(to_addr) = to {
+                Some(validate_addr(deps.api, &to_addr)?)
+            } else {
+                None
+            };
+
+            swap(
+                deps,
+                env,
+                info,
+                Addr::unchecked(cw20_msg.sender),
+                Asset {
+                    info: AssetInfo::Token { contract_addr },
+                    amount: cw20_msg.amount,
+                },
+                belief_price,
+                max_spread,
+                to_addr,
+            )
+        }
+        Ok(Cw20HookMsg::WithdrawLiquidity { basket_asset} ) => withdraw_liquidity(
+            deps,
+            env,
+            info,
+            Addr::unchecked(cw20_msg.sender),
+            cw20_msg.amount,
+            basket_asset
+        ),
+        Err(err) => Err(ContractError::Std(err)),
+    }
+}
+
+
+
+
+
+/// ## Description
+/// Performs an swap operation with the specified parameters. The trader must approve the
+/// pool contract to transfer offer assets from their wallet.
+/// Returns an [`ContractError`] on failure, otherwise returns the [`Response`] with the specified attributes if the operation was successful.
+/// ## Params
+/// * **deps** is an object of type [`DepsMut`].
+///
+/// * **env** is an object of type [`Env`].
+///
+/// * **info** is an object of type [`MessageInfo`].
+///
+/// * **sender** is an object of type [`Addr`]. This is the sender of the swap operation.
+///
+/// * **offer_asset** is an object of type [`Asset`]. Proposed asset for swapping.
+///
+/// * **belief_price** is an object of type [`Option<Decimal>`]. Used to calculate the maximum swap spread.
+///
+/// * **max_spread** is an object of type [`Option<Decimal>`]. Sets the maximum spread of the swap operation.
+///
+/// * **to** is an object of type [`Option<Addr>`]. Sets the recipient of the swap operation.
+/// NOTE - the address that wants to swap should approve the pair contract to pull the offer token.
+#[allow(clippy::too_many_arguments)]
+pub fn swap(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: Addr,
+    offer_asset: Asset,
+    belief_price: Option<Decimal>,
+    max_spread: Option<Decimal>,
+    to: Option<Addr>,
+) -> Result<Response, ContractError> {
+
+    // offer_asset.assert_sent_native_token_balance(&info)?;
+
+    // let mut basket: Basket = BASKET.load(deps.storage)?;
+
+    // // If the asset balance is already increased, we should subtract the user deposit from the pool amount
+    // let pools: Vec<Asset> = basket
+    //     .pair_info
+    //     .query_pools(&deps.querier, env.clone().contract.address)?
+    //     .iter()
+    //     .map(|p| {
+    //         let mut p = p.clone();
+    //         if p.info.equal(&offer_asset.info) {
+    //             p.amount = p.amount.checked_sub(offer_asset.amount).unwrap();
+    //         }
+
+    //         p
+    //     })
+    //     .collect();
+
+    // let offer_pool: Asset;
+    // let ask_pool: Asset;
+
+    // if offer_asset.info.equal(&pools[0].info) {
+    //     offer_pool = pools[0].clone();
+    //     ask_pool = pools[1].clone();
+    // } else if offer_asset.info.equal(&pools[1].info) {
+    //     offer_pool = pools[1].clone();
+    //     ask_pool = pools[0].clone();
+    // } else {
+    //     return Err(ContractError::AssetMismatch {});
+    // }
+
+    // // Get fee info from the factory
+    // let fee_info = query_fee_info(
+    //     &deps.querier,
+    //     basket.factory_addr.clone(),
+    //     basket.pair_info.pair_type.clone(),
+    // )?;
+
+    // let offer_amount = offer_asset.amount;
+    // let (return_amount, spread_amount, commission_amount) = compute_swap(
+    //     offer_pool.amount,
+    //     ask_pool.amount,
+    //     offer_amount,
+    //     fee_info.total_fee_rate,
+    // )?;
+
+    // // Check the max spread limit (if it was specified)
+    // assert_max_spread(
+    //     belief_price,
+    //     max_spread,
+    //     offer_amount,
+    //     return_amount + commission_amount,
+    //     spread_amount,
+    // )?;
+
+    // // Compute the tax for the receiving asset (if it is a native one)
+    // let return_asset = Asset {
+    //     info: ask_pool.info.clone(),
+    //     amount: return_amount,
+    // };
+
+    // let tax_amount = return_asset.compute_tax(&deps.querier)?;
+    // let receiver = to.unwrap_or_else(|| sender.clone());
+    // let mut messages: Vec<CosmosMsg> =
+    //     vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
+
+    // // Compute the Maker fee
+    // let mut maker_fee_amount = Uint128::new(0);
+    // if let Some(fee_address) = fee_info.fee_address {
+    //     if let Some(f) = calculate_maker_fee(
+    //         ask_pool.info.clone(),
+    //         commission_amount,
+    //         fee_info.maker_fee_rate,
+    //     ) {
+    //         messages.push(f.clone().into_msg(&deps.querier, fee_address)?);
+    //         maker_fee_amount = f.amount;
+    //     }
+    // }
+
+    // // Accumulate prices for the assets in the pool
+    // if let Some((price0_cumulative_new, price1_cumulative_new, block_time)) =
+    //     accumulate_prices(env, &basket, pools[0].amount, pools[1].amount)?
+    // {
+    //     basket.price0_cumulative_last = price0_cumulative_new;
+    //     basket.price1_cumulative_last = price1_cumulative_new;
+    //     basket.block_time_last = block_time;
+    //     CONFIG.save(deps.storage, &basket)?;
+    // }
+
+    // Ok(Response::new()
+    //     .add_messages(
+    //         // 1. send collateral tokens from the contract to a user
+    //         // 2. send inactive commission fees to the Maker ontract
+    //         messages,
+    //     )
+    //     .add_attribute("action", "swap")
+    //     .add_attribute("sender", sender.as_str())
+    //     .add_attribute("receiver", receiver.as_str())
+    //     .add_attribute("offer_asset", offer_asset.info.to_string())
+    //     .add_attribute("ask_asset", ask_pool.info.to_string())
+    //     .add_attribute("offer_amount", offer_amount.to_string())
+    //     .add_attribute("return_amount", return_amount.to_string())
+    //     .add_attribute("tax_amount", tax_amount.to_string())
+    //     .add_attribute("spread_amount", spread_amount.to_string())
+    //     .add_attribute("commission_amount", commission_amount.to_string())
+    //     .add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
+    
+
+    // TODO: IMPLEMENT FN AND REMOVE THIS OK
+    Ok(Response::new())
 }

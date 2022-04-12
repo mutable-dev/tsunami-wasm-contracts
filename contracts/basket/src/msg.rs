@@ -1,8 +1,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Decimal};
 use cw20::{Cw20Coin, MinterResponse, Cw20ReceiveMsg};
 use crate::asset::AssetInfo;
+use crate::state::BasketAsset;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -40,7 +41,7 @@ pub struct InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     DepositLiquidity {},
-    WithdrawLiquidity { cw20msg: Cw20ReceiveMsg },
+    Receive { msg: Cw20ReceiveMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -106,3 +107,19 @@ pub struct InstantiateLpMsg {
     /// Minting controls specified in a [`MinterResponse`] structure
     pub mint: Option<MinterResponse>,
 }
+
+/// This structure describes a CW20 hook message.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Cw20HookMsg {
+    /// Swap a given amount of asset
+    Swap {
+        belief_price: Option<Decimal>,
+        max_spread: Option<Decimal>,
+        to: Option<String>,
+    },
+    /// Withdraw liquidity from the pool
+    WithdrawLiquidity { basket_asset: BasketAsset },
+}
+
+
