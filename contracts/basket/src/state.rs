@@ -5,12 +5,13 @@ use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 
 use crate::msg::InstantiateMsg;
+use crate::asset::{Asset, AssetInfo};
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Basket {
 	/// Assets
-	pub assets: Vec<Asset>,
+	pub assets: Vec<BasketAsset>,
 	/// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -33,15 +34,15 @@ pub struct Basket {
 	pub total_weights: Uint128,
 	/// account that can make changes to the exchange
 	pub admin: Addr,
+	/// LP token address
+	pub lp_token_address: Addr
 }
 
 /// Represents whitelisted assets on the dex
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Asset {
-	/// Token address of the available asset
-	pub token_address: Addr,
-	/// the decimals for the token
-	pub token_decimals: Uint128,
+pub struct BasketAsset {
+	/// AssetInfo
+	pub info: AssetInfo,
 	/// The weight of this token in the LP 
 	pub token_weight: Uint128,
 	/// min about of profit a position needs to be in to take profit before time
@@ -73,9 +74,10 @@ pub struct Asset {
 	pub pool_reserves: Uint128,
 }
 
-impl Asset {
-	pub fn new(asset: (Addr, Uint128, Uint128, Uint128, bool, bool, Addr, Addr)
-		// token_address: Addr,
+impl BasketAsset {
+	pub fn new(
+		asset: (AssetInfo, Uint128, Uint128, Uint128, bool, bool, Addr, Addr)
+		// token info: AssetInfo
 		// token_weight: Uint128,
 		// min_profit_basis_points: Uint128,
 		// max_lptoken_amount: Uint128,
@@ -86,7 +88,7 @@ impl Asset {
 	) -> Self {
 		
 		// Unpack tuple
-		let token_address = asset.0;
+		let info = asset.0;
 		let token_weight = asset.1;
 		let min_profit_basis_points = asset.2;
 		let max_lptoken_amount = asset.3;
@@ -95,7 +97,6 @@ impl Asset {
 		let oracle_address = asset.6;
 		let backup_oracle_address = asset.7;
 
-		
 		// TODO: query CW20 for decimals
 		let token_decimals = Uint128::from(8_u32);
 
@@ -108,11 +109,9 @@ impl Asset {
 		let fee_reserves = Uint128::default();
 		let pool_reserves = Uint128::default();
 
-		Asset {
-			/// Token address of the available asset
-			token_address,
-			/// the decimals for the token
-			token_decimals,
+		BasketAsset {
+			/// Static asset info about the token
+			info,
 			/// The weight of this token in the LP 
 			token_weight,
 			/// min about of profit a position needs to be in to take profit before time
@@ -149,7 +148,7 @@ impl Asset {
 
 impl Basket {
 	pub fn new(
-		assets: Vec<Asset>,
+		assets: Vec<BasketAsset>,
 		msg: &InstantiateMsg,
 	) -> Self {
 		Basket {
@@ -165,6 +164,25 @@ impl Basket {
 			min_profit_time: msg.min_profit_time,
 			total_weights: msg.total_weights,
 			admin: msg.admin.clone(),
+			lp_token_address: Addr::unchecked(""), // This is fixed in reply
+		}
+	}
+
+	/// TODO: Calculates AUM
+	pub fn calculate_aum(&self) -> Uint128 {
+		Uint128::from(1_u32)
+	}
+
+	/// TODO: Calculates total number of lp tokens
+	pub fn total_tokens(&self) -> Uint128 {
+		Uint128::from(1_u32)
+	}
+
+	/// TODO: Calculates amount to withdraw. Reduce fees elsewhere
+	pub fn withdraw_amount(&self, lp_amount: Uint128, info: AssetInfo) -> Asset {
+		Asset {
+			info: info,
+			amount: (lp_amount * self.calculate_aum()) / self.total_tokens()
 		}
 	}
 }

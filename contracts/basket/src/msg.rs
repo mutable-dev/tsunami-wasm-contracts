@@ -1,15 +1,16 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Uint128};
-use cw20::{Cw20Coin, MinterResponse};
+use cw20::{Cw20Coin, MinterResponse, Cw20ReceiveMsg};
+use crate::asset::AssetInfo;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
     
     /// The list of assets in the basket
     pub assets: Vec<(
-        // token_address: 
-        Addr,
+        // token info: 
+        AssetInfo,
         // token_weight: 
         Uint128,
         //min_profit_basis_points: 
@@ -56,8 +57,8 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Increment {},
-    Decrement {},
+    DepositLiquidity {},
+    WithdrawLiquidity { cw20msg: Cw20ReceiveMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -73,6 +74,12 @@ pub struct CountResponse {
     pub count: u8,
 }
 
+#[derive(PartialEq,Clone,Default)]
+pub struct MsgInstantiateContractResponse {
+    // message fields
+    pub contract_address: String,
+    pub data: Vec<u8>,
+}
 
 /// This structure describes the parameters used for creating a token contract.
 /// TokenContract InstantiateMsg

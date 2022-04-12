@@ -1,16 +1,18 @@
 use crate::{
     error::ContractError,
     msg::*,
-    state::{Basket, Asset, BASKET},
+    asset::AssetInfo,
+    state::{Basket, BasketAsset, BASKET},
 };
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
-    WasmMsg,
+    WasmMsg, Api
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
+use protobuf::Message;
 
 
 /// Contract name that is used for migration.
@@ -34,8 +36,12 @@ pub fn instantiate(
     // Set contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // Build Assets from message
-    let assets: Vec<Asset> = build_assets(&msg);
+    // SubMsg to Create the LP token contract
+    let token_name = format!("{}-LP", &msg.name);
+    let sub_msg = instantiate_lp(&msg, env, token_name)?;
+
+    // Build BasketAssets from message
+    let assets: Vec<BasketAsset> = build_assets(&msg);
 
     // Build Basket from Assets and parameters in message
     let basket = Basket::new(assets, &msg);
@@ -43,12 +49,106 @@ pub fn instantiate(
     // Store Basket in Item/Singleton
     BASKET.save(deps.storage, &basket)?;
 
-    // SubMsg to Create the LP token contract
-    let token_name = format!("{}-LP", &msg.name);
-    let sub_msg = instantiate_lp(&msg, env, token_name)?;
-
     // Return success with response
     Ok(Response::new().add_submessages(sub_msg))
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::DepositLiquidity {} => Ok(Response::new()),
+        ExecuteMsg::WithdrawLiquidity { cw20msg } => withdraw_liquidity(
+            deps,
+            env,
+            info,
+            Addr::unchecked(cw20msg.sender),
+            cw20msg.amount,
+            cw20msg.msg
+        ),
+    }
+}
+
+// #[cfg_attr(not(feature = "library"), entry_point)]
+// pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+//     let mut basket: Basket = BASKET.load(deps.storage)?;
+
+//     if basket.lp_token_address != Addr::unchecked("") {
+//         return Err(ContractError::Unauthorized {});
+//     }
+
+//     let data = msg.result.unwrap().data.unwrap();
+//     let res: MsgInstantiateContractResponse =
+//         Message::parse_from_bytes(data.as_slice()).map_err(|_| {
+//             StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
+//         })?;
+
+//     config.pair_info.liquidity_token =
+//         addr_validate_to_lower(deps.api, res.get_contract_address())?;
+
+//     CONFIG.save(deps.storage, &config)?;
+
+//     Ok(Response::new().add_attribute("liquidity_token_addr", config.pair_info.liquidity_token))
+// }
+
+pub fn withdraw_liquidity(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    sender: Addr,
+    amount: Uint128,
+    msg: Binary,
+) -> Result<Response, ContractError> {
+    // Load Basket
+    let mut basket: Basket = BASKET.load(deps.storage).unwrap();
+
+    // Abort if not from basket lp token contract
+    if info.sender != basket.lp_token_address {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // TODO: encode which asset to withdraw in msg (may not be possible. may need some reworking)
+    // For now, just send back luna always 
+    let asset_info = AssetInfo::NativeToken{ denom: "luna".to_string() }; // TODO; replace with some function of Binary msg
+    let refund_asset = basket.withdraw_amount(amount, asset_info);//get_share_in_assets(&pools, amount, total_share);
+
+    // Update the pool info
+    let messages: Vec<CosmosMsg> = vec![
+        refund_asset
+            .clone()
+            .into_msg(&deps.querier, sender.clone())?,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: basket.lp_token_address.to_string(),
+            msg: to_binary(&Cw20ExecuteMsg::Burn { amount })?,
+            funds: vec![],
+        }),
+    ];
+
+    let attributes = vec![
+        attr("action", "withdraw_liquidity"),
+        attr("sender", sender.as_str()),
+        attr("withdrawn_share", &amount.to_string()),
+        attr(
+            "refund_asset",
+            format!("{}", refund_asset),
+        ),
+    ];
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attributes(attributes))
+}
+
+/// TODO: Need to implement this
+fn validate_addr(
+    api: &dyn Api,
+    sender: &String
+) -> Result<String, ContractError> {
+    Ok(sender.clone())
 }
 
 
@@ -84,17 +184,17 @@ fn instantiate_lp(
 
 fn build_assets(
     msg: &InstantiateMsg,
-) -> Vec<Asset> {
+) -> Vec<BasketAsset> {
     let mut assets = Vec::new();
     for asset in msg.assets.clone() {
-        assets.push(Asset::new(asset));
+        assets.push(BasketAsset::new(asset));
     }
     assets
 }
 
 fn check_assets(assets: &Vec<(      
-    // token_address: 
-    Addr,
+    // asset info
+    AssetInfo,
     // token_weight: 
     Uint128,
     //min_profit_basis_points: 
