@@ -1,6 +1,7 @@
 use crate::contract::{ 
     instantiate,
     query_basket,
+    calculate_fee_basis_points
  };
 use crate::mock_querier::mock_dependencies;
 use crate::{
@@ -131,4 +132,198 @@ fn proper_initialization() {
     assert_eq!(basket.min_profit_time, Uint128::new(1));
     assert_eq!(basket.total_weights, Uint128::new(1));
     assert_eq!(basket.admin, Addr::unchecked("name"));
+}
+
+
+
+#[test]
+fn exploration() {
+    assert_eq!(2 + 2, 4);
+}
+
+fn create_available_asset() -> BasketAsset {
+    BasketAsset {
+        info: AssetInfo::NativeToken{denom: "uluna".to_string()},
+        token_weight:  Uint128::new(5),
+        min_profit_basis_points:  Uint128::new(100),
+        max_asset_amount:  Uint128::new(100),
+        stable_token: false,
+        shortable_token: false,
+        cumulative_funding_rate:  Uint128::new(0),
+        last_funding_time:  Uint128::new(0),
+        oracle_address: Addr::unchecked("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"),
+        backup_oracle_address: Addr::unchecked("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"),
+        global_short_size:  Uint128::new(0),
+        net_protocol_liabilities:  Uint128::new(0),
+        occupied_reserves:  Uint128::new(0),
+        fee_reserves: Uint128::new(0),
+        pool_reserves:  Uint128::new(400)
+    }
+}
+
+#[test]
+fn slightly_improves_basket_add() {
+    let available_asset = create_available_asset();
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(100),
+        true
+    );
+    assert_eq!(Uint128::new(10024), fees);
+}
+
+#[test]
+fn strongly_improves_basket_add() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(4);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(1_000_000),
+        4,
+        Uint128::new(100),
+        true
+    );
+    assert_eq!(Uint128::new(10001), fees);
+}
+
+#[test]
+fn strongly_harms_basket_add() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(500);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(1_000_000),
+        4,
+        Uint128::new(10000),
+        true
+    );
+    assert_eq!(Uint128::new(10060), fees);
+}
+
+#[test]
+fn lightly_harms_basket_add() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(500);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(50),
+        true
+    );
+    assert_eq!(Uint128::new(10031), fees);
+}
+
+#[test]
+fn slightly_improves_basket_remove() {
+        let available_asset = &mut create_available_asset();
+        available_asset.pool_reserves = Uint128::new(550);
+        let fees = calculate_fee_basis_points(
+            Uint128::new(100_000),
+            &available_asset,
+            Uint128::new(10),
+            Uint128::new(100_0000),
+            4,
+            Uint128::new(10),
+            false
+        );
+        assert_eq!(Uint128::new(10027), fees);
+}
+
+#[test]
+fn strongly_improves_basket_remove() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(1000);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(100),
+        false
+    );
+    assert_eq!(Uint128::new(10000), fees);
+}
+
+#[test]
+fn strongly_harms_basket_remove() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(10);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(5),
+        false
+    );
+    assert_eq!(Uint128::new(10059), fees);
+}
+
+#[test]
+fn lightly_harms_basket_remove() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(500);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(50),
+        false
+    );
+    assert_eq!(Uint128::new(10031), fees);
+}
+
+#[test]
+fn neutral_basket_remove() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(550);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(100),
+        false
+    );
+    assert_eq!(Uint128::new(10030), fees);
+}
+
+#[test]
+fn neutral_basket_add() {
+    let available_asset = &mut create_available_asset();
+    available_asset.pool_reserves = Uint128::new(450);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(100_000),
+        &available_asset,
+        Uint128::new(10),
+        Uint128::new(100_0000),
+        4,
+        Uint128::new(100),
+        true
+    );
+    assert_eq!(Uint128::new(10030), fees);
 }
