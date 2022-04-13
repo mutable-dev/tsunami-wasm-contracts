@@ -143,7 +143,7 @@ impl Asset {
 
 /// This enum describes available Token types.
 /// ## Examples
-/// ```
+/// ``` ignore
 /// # use cosmwasm_std::Addr;
 /// # use astroport::asset::AssetInfo::{NativeToken, Token};
 /// Token { contract_addr: Addr::unchecked("terra...") };

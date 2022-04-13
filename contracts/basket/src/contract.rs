@@ -13,6 +13,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
+use std::cmp::max;
 
 
 /// Contract name that is used for migration.
@@ -21,6 +22,11 @@ const CONTRACT_NAME: &str = "tsunami-basket";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INSTANTIATE_BASKET_REPLY_ID: u64 = 1;
+const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
+const FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(10_030);
+const FEE_RAW: Uint128 = Uint128::new(30);
+const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(30);
+
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -448,4 +454,92 @@ pub fn swap(
 
     // TODO: IMPLEMENT FN AND REMOVE THIS OK
     Ok(Response::new())
+}
+
+// cases to consider
+// 1. initialAmount is far from targetAmount, action increases balance slightly => high rebate
+// 2. initialAmount is far from targetAmount, action increases balance largely => high rebate
+// 3. initialAmount is close to targetAmount, action increases balance slightly => low rebate
+// 4. initialAmount is far from targetAmount, action reduces balance slightly => high tax
+// 5. initialAmount is far from targetAmount, action reduces balance largely => high tax
+// 6. initialAmount is close to targetAmount, action reduces balance largely => low tax
+// 7. initialAmount is above targetAmount, nextAmount is below targetAmount and vice versa
+// 8. a large swap should have similar fees as the same trade split into multiple smaller swaps
+/// CHECK: types here are bad, and conversions too many, need to consolidate
+/// CHECK: that we are doing the correct math when calculating
+/// fees that should be charged 
+/// CHECK: that we are calculating available assets correctly
+/// CHECK: that we should calculate the current reserves to compare against target reserves using 
+/// only the available asset, relies on how AUM is calculated
+pub fn calculate_fee_basis_points(
+	aum: Uint128,
+	available_asset: &BasketAsset, 
+	total_weight: Uint128, 
+	price: Uint128,
+	exponent: u32,
+	new_amount: Uint128,
+	increment: bool
+) -> Uint128 {
+	let current_reserves = available_asset.pool_reserves;
+	let initial_reserve_usd_value = (current_reserves).
+		checked_mul(price).
+		unwrap().
+		checked_div(Uint128::new(10).pow(exponent))
+		.unwrap();
+
+	let diff_usd_value = new_amount.
+		checked_mul(price).
+		unwrap().
+		checked_div(Uint128::new(10).pow(exponent))
+		.unwrap();
+
+	let next_reserve_usd_value = if increment { 
+		initial_reserve_usd_value + diff_usd_value 
+	} else { 
+		max(initial_reserve_usd_value - diff_usd_value, Uint128::new(0))
+	};
+	
+	let target_lp_usd_value = available_asset.token_weight.
+		checked_mul(aum).
+		unwrap().
+		checked_div(total_weight).
+		unwrap();
+
+	if target_lp_usd_value == Uint128::new(0) {
+		return FEE_IN_BASIS_POINTS;
+	}
+
+	let initial_usd_from_target = if initial_reserve_usd_value > target_lp_usd_value { 
+		initial_reserve_usd_value - target_lp_usd_value
+	} else { target_lp_usd_value - initial_reserve_usd_value  };
+
+	let next_usd_from_target = if next_reserve_usd_value > target_lp_usd_value { 
+		next_reserve_usd_value - target_lp_usd_value
+	} else { target_lp_usd_value - next_reserve_usd_value  };
+
+	// action improves target balance
+	if next_usd_from_target < initial_usd_from_target {
+		let rebate_bps = (FEE_IN_BASIS_POINTS ).
+			checked_sub(BASIS_POINTS_PRECISION ).
+			unwrap().
+			checked_mul(initial_usd_from_target).
+			unwrap().
+			checked_div(target_lp_usd_value ).
+			unwrap();
+		return if rebate_bps >= FEE_RAW  {
+			BASIS_POINTS_PRECISION 
+		} else { 
+			FEE_IN_BASIS_POINTS - rebate_bps
+		};
+	} else if next_usd_from_target == initial_usd_from_target {
+		return FEE_IN_BASIS_POINTS
+	}
+
+	let mut average_diff = (initial_usd_from_target + next_usd_from_target)/Uint128::new(2);
+	if average_diff > target_lp_usd_value {
+		average_diff = target_lp_usd_value ;
+	}
+
+	let penalty = PENALTY_IN_BASIS_POINTS * average_diff / target_lp_usd_value ;
+	return FEE_IN_BASIS_POINTS + penalty
 }
