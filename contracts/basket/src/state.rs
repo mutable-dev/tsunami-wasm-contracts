@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
-
+use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
+use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -125,6 +126,11 @@ impl BasketAsset {
 	}
 }
 
+pub struct AumResult {
+	pub aum: Uint128,
+	pub price: i64,
+	pub exponent: i32,
+}
 
 impl Basket {
 	pub fn new(
@@ -148,9 +154,61 @@ impl Basket {
 		}
 	}
 
-	/// TODO: Calculates AUM
-	pub fn calculate_aum(&self) -> Uint128 {
-		Uint128::from(1_u32)
+	// /// TODO: Calculates AUM
+	// pub fn calculate_aum(&self) -> Uint128 {
+	// 	Uint128::from(1_u32)
+	// }
+
+	// CHECK: that we should take the value of the token account as AUM and not the general reserves from the
+	// available asset account
+	pub fn calculate_aum(
+		&self,
+		prices: &[PriceFeed], 
+		reserve_basket_asset_info: &AssetInfo,
+	) -> Result<AumResult, ContractError> {
+		let mut aum = Uint128::new(0);
+		let mut precise_price = 0;
+		let mut exponent =  1;
+		let mut current_basket_asset: &BasketAsset = &self.assets[0];
+			let reserve_asset_denom: String;
+			match reserve_basket_asset_info {
+					AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
+					_ => {
+							return Err(ContractError::NonNativeAssetAssertion{});
+					}
+			}
+
+		for (i, pyth_price) in prices.iter().enumerate() {
+			current_basket_asset = &self.assets[i];
+
+			let price_option = pyth_price.get_current_price();
+					let price: Price;
+					match price_option {
+							Some(price_res) => price = price_res,
+							_ => return Err(ContractError::PriceFeedNotFound{})
+					};
+
+					// Assumes only native assets for now
+					let current_asset_info: &AssetInfo = &current_basket_asset.info; 
+
+					match current_asset_info {
+							AssetInfo::NativeToken{ denom } => {
+									if denom == &reserve_asset_denom {
+											exponent = price.expo.abs();
+											precise_price = price.price;
+									}
+							},
+							_ =>  ()
+					}
+
+			aum += current_basket_asset.pool_reserves.checked_mul(Uint128::new(price.price as u128))
+							.unwrap()
+				.checked_div(
+					Uint128::new(10_u64.pow(price.expo.abs() as u32) as u128)
+				)
+				.unwrap();
+		}
+		Ok(AumResult{ aum, price: precise_price, exponent })
 	}
 
 	/// TODO: Calculates total number of lp tokens
@@ -159,10 +217,14 @@ impl Basket {
 	}
 
 	/// TODO: Calculates amount to withdraw. Reduce fees elsewhere
-	pub fn withdraw_amount(&self, lp_amount: Uint128, info: AssetInfo) -> Asset {
-		Asset {
-			info: info,
-			amount: (lp_amount * self.calculate_aum()) / self.total_tokens()
+	pub fn withdraw_amount(&self, lp_amount: Uint128, prices: &[PriceFeed], info: AssetInfo, ) -> Result<Asset, ContractError> {
+		let aum_result = self.calculate_aum(prices, &info);
+		match aum_result {
+			Ok(res) => Ok(Asset {
+				info: info,
+				amount: (lp_amount * res.aum) / self.total_tokens()
+			}),
+			Err(err) => Err(err)
 		}
 	}
 }

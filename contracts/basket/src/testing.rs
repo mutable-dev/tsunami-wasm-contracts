@@ -163,7 +163,7 @@ fn create_basket_asset() -> BasketAsset {
     }
 }
 
-fn create_price_feed() -> PriceFeed {
+pub fn create_price_feed() -> PriceFeed {
     PriceFeed::new(
         PriceIdentifier::new([0; 32]),
         PriceStatus::default(),
