@@ -2,7 +2,6 @@ use crate::contract::{
     instantiate,
     query_basket,
     calculate_fee_basis_points,
-    calculate_aum
  };
 use crate::mock_querier::mock_dependencies;
 use crate::{
@@ -143,6 +142,41 @@ fn exploration() {
     assert_eq!(2 + 2, 4);
 }
 
+fn create_basket() -> Basket {
+    let basket_asset = create_basket_asset();
+    let basket_asset_copy = create_basket_asset();
+    Basket::new(
+        vec!(basket_asset), 
+        &InstantiateMsg{
+            assets: vec!(
+                InstantiateAssetInfo{
+                    info: basket_asset_copy.info.clone(),
+                    address: Addr::unchecked("name"),
+                    weight: Uint128::new(1),
+                    min_profit_basis_points: Uint128::new(1),
+                    max_asset_amount: Uint128::new(1),
+                    is_asset_stable: true,
+                    is_asset_shortable: true,
+                    oracle_address: Addr::unchecked("oracle"),
+                    backup_oracle_address: Addr::unchecked("backup_oracle"),
+                }
+            ),
+            name: "blue chip basket".to_string(),
+            tax_basis_points: Uint128::new(1),
+            stable_tax_basis_points: Uint128::new(1),
+            mint_burn_basis_points: Uint128::new(1),
+            swap_fee_basis_points: Uint128::new(1),
+            stable_swap_fee_basis_points: Uint128::new(1),
+            margin_fee_basis_points: Uint128::new(1),
+            liquidation_fee_usd: Uint128::new(1),
+            min_profit_time: Uint128::new(1),
+            total_weights: Uint128::new(1),
+            admin: Addr::unchecked("name"),
+            token_code_id: 10u64,
+        },
+    )
+}
+
 fn create_basket_asset() -> BasketAsset {
     BasketAsset {
         info: AssetInfo::NativeToken{denom: "uluna".to_string()},
@@ -163,16 +197,16 @@ fn create_basket_asset() -> BasketAsset {
     }
 }
 
-pub fn create_price_feed() -> PriceFeed {
+pub fn create_price_feed(price: i64, exponent: i32) -> PriceFeed {
     PriceFeed::new(
         PriceIdentifier::new([0; 32]),
-        PriceStatus::default(),
+        PriceStatus::Trading,
         0,
-        6,
+        exponent,
         5,
         10_000_000,
         PriceIdentifier::new([0; 32]),
-        0,
+        price,
         0,
         0,
         0,
@@ -349,17 +383,41 @@ fn neutral_basket_add() {
     assert_eq!(Uint128::new(10030), fees);
 }
 
-// #[test]
-// fn test_calculate_aum() {
-//     let mut basket_asset = create_basket_asset();
-//     basket_asset.pool_reserves = Uint128::new(450);
+#[test]
+fn test_calculate_aum_one_asset() {
+    let mut basket = create_basket();
+    let basket_asset = create_basket_asset();
+    basket.assets[0].pool_reserves = Uint128::new(450);
 
-//     let mut price_feeds = Vec::new();
-//     price_feeds.push(create_price_feed());
-//     let aum_result  = calculate_aum(
-//         &price_feeds,
-//         &[&basket_asset],
-//         &basket_asset
-//     ).unwrap();
-//     assert_eq!(Uint128::new(10030), aum_result.aum);
-// }
+    let mut price_feeds = Vec::new();
+    price_feeds.push(create_price_feed(10_000_000, 6));
+    let aum_result  = basket.calculate_aum(
+        &price_feeds,
+        &basket_asset.info
+    ).unwrap();
+    assert_eq!(Uint128::new(4500), aum_result.aum);
+    assert_eq!(6, aum_result.exponent);
+    assert_eq!(10_000_000, aum_result.price);
+}
+
+#[test]
+fn test_calculate_aum_two_assets() {
+    let mut basket = create_basket();
+    let basket_asset = create_basket_asset();
+    let basket_asset_copy = create_basket_asset();
+    basket.assets[0].pool_reserves = Uint128::new(450);
+    basket.assets[0].info = AssetInfo::NativeToken{denom: "ste".to_string()};
+    basket.assets.push(basket_asset);
+    basket.assets[1].pool_reserves = Uint128::new(10);
+
+    let mut price_feeds = Vec::new();
+    price_feeds.push(create_price_feed(10_000_000, 6));
+    price_feeds.push(create_price_feed(1_000_000, 5));
+    let aum_result  = basket.calculate_aum(
+        &price_feeds,
+        &basket_asset_copy.info
+    ).unwrap();
+    assert_eq!(Uint128::new(4600), aum_result.aum);
+    assert_eq!(5, aum_result.exponent);
+    assert_eq!(1_000_000, aum_result.price);
+}
