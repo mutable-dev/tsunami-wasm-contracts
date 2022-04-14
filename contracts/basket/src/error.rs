@@ -37,6 +37,12 @@ pub enum ContractError {
 
     #[error("Duplicate asset provided")]
     DuplicateAssetAssertion {},
+
+    #[error("Unsupported non-native asset provided")]
+    NonNativeAssetAssertion {},
+
+    #[error("Unable to retrieve pyth price")]
+    PriceFeedNotFound{}
 }
 
 impl From<OverflowError> for ContractError {

@@ -14,6 +14,8 @@ use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
 use std::cmp::max;
+use pyth_sdk_terra::{PriceFeed, Price};
+
 
 
 /// Contract name that is used for migration.
@@ -473,14 +475,14 @@ pub fn swap(
 /// only the available asset, relies on how AUM is calculated
 pub fn calculate_fee_basis_points(
 	aum: Uint128,
-	available_asset: &BasketAsset, 
+	basket_asset: &BasketAsset, 
 	total_weight: Uint128, 
 	price: Uint128,
 	exponent: u32,
 	new_amount: Uint128,
 	increment: bool
 ) -> Uint128 {
-	let current_reserves = available_asset.pool_reserves;
+	let current_reserves = basket_asset.pool_reserves;
 	let initial_reserve_usd_value = (current_reserves).
 		checked_mul(price).
 		unwrap().
@@ -499,7 +501,7 @@ pub fn calculate_fee_basis_points(
 		max(initial_reserve_usd_value - diff_usd_value, Uint128::new(0))
 	};
 	
-	let target_lp_usd_value = available_asset.token_weight.
+	let target_lp_usd_value = basket_asset.token_weight.
 		checked_mul(aum).
 		unwrap().
 		checked_div(total_weight).
@@ -542,4 +544,57 @@ pub fn calculate_fee_basis_points(
 
 	let penalty = PENALTY_IN_BASIS_POINTS * average_diff / target_lp_usd_value ;
 	return FEE_IN_BASIS_POINTS + penalty
+}
+
+// CHECK: that we should take the value of the token account as AUM and not the general reserves from the
+// available asset account
+pub fn calculate_aum(
+	prices: &Vec<PriceFeed>, 
+	basket_assets: &[BasketAsset],
+	reserve_basket_asset: &BasketAsset,
+) -> Result<(Uint128, i64, i32), ContractError> {
+	let mut aum = Uint128::new(0);
+	let mut precise_price = 0;
+	let mut exponent =  1;
+	let mut current_basket_asset: &BasketAsset = &basket_assets[0];
+    let reserve_asset_info: &AssetInfo = &reserve_basket_asset.info;
+    let reserve_asset_denom: String;
+    match reserve_asset_info {
+        AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
+        _ => {
+            return Err(ContractError::NonNativeAssetAssertion{});
+        }
+    }
+
+	for (i, pyth_price) in prices.iter().enumerate() {
+		current_basket_asset = &basket_assets[i];
+
+		let price_option = pyth_price.get_current_price();
+        let price: Price;
+        match price_option {
+            Some(price_res) => price = price_res,
+            _ => return Err(ContractError::PriceFeedNotFound{})
+        };
+
+        // Assumes only native assets for now
+        let current_asset_info: &AssetInfo = &current_basket_asset.info; 
+
+        match current_asset_info {
+            AssetInfo::NativeToken{ denom } => {
+                if denom == &reserve_asset_denom {
+                    exponent = price.expo.abs();
+                    precise_price = price.price;
+                }
+            },
+            _ =>  ()
+        }
+
+		aum += current_basket_asset.pool_reserves.checked_mul(Uint128::new(price.price as u128))
+            .unwrap()
+			.checked_div(
+				Uint128::new(10_u64.pow(price.expo.abs() as u32) as u128)
+			)
+			.unwrap();
+	}
+	Ok((aum, precise_price, exponent))
 }

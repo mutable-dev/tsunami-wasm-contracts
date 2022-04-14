@@ -51,6 +51,8 @@ schemars = "0.8.3"
 serde = { version = "1.0.127", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.26" }
 protobuf = { version = "2", features = ["with-bytes"] }
+pyth-sdk-terra = { version = "0.3.0" }
+
 
 [dev-dependencies]
 cosmwasm-schema = { version = "0.16.0" }
