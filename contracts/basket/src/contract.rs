@@ -546,13 +546,19 @@ pub fn calculate_fee_basis_points(
 	return FEE_IN_BASIS_POINTS + penalty
 }
 
+pub struct AumResult {
+    pub aum: Uint128,
+    pub price: i64,
+    pub exponent: i32,
+}
+
 // CHECK: that we should take the value of the token account as AUM and not the general reserves from the
 // available asset account
 pub fn calculate_aum(
 	prices: &Vec<PriceFeed>, 
-	basket_assets: &[BasketAsset],
+	basket_assets: &[&BasketAsset],
 	reserve_basket_asset: &BasketAsset,
-) -> Result<(Uint128, i64, i32), ContractError> {
+) -> Result<AumResult, ContractError> {
 	let mut aum = Uint128::new(0);
 	let mut precise_price = 0;
 	let mut exponent =  1;
@@ -596,5 +602,5 @@ pub fn calculate_aum(
 			)
 			.unwrap();
 	}
-	Ok((aum, precise_price, exponent))
+	Ok(AumResult{ aum, price: precise_price, exponent })
 }
