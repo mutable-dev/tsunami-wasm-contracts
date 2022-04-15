@@ -3,6 +3,7 @@ use crate::{
     msg::*,
     asset::{AssetInfo, Asset},
     state::{Basket, BasketAsset, BASKET},
+    querier::query_supply,
 };
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{

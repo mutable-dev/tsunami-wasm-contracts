@@ -3,6 +3,7 @@ pub mod state;
 pub mod error;
 pub mod msg;
 pub mod asset;
+pub mod querier;
 
 #[cfg(test)]
 mod testing;
