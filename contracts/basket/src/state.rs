@@ -165,6 +165,18 @@ impl Basket {
 			amount: (lp_amount * self.calculate_aum()) / self.total_tokens()
 		}
 	}
+
+	/// TODO: Gathers all `Asset`s in basket.
+	pub fn get_pools(&self) -> Vec<Asset> {
+		let mut v = vec![];
+		for asset in &self.assets {
+			v.push(Asset {
+				info: asset.info.clone(),
+				amount: Uint128::from(1_u32) // TODO: GATHER POOL BALANCES, REPLACE THIS DUMMY
+			})
+		}
+		v
+	}
 }
 
 

@@ -546,6 +546,136 @@ pub fn calculate_fee_basis_points(
 	return FEE_IN_BASIS_POINTS + penalty
 }
 
+
+/// ## Description
+/// Provides liquidity in the pair with the specified input parameters.
+/// Returns a [`ContractError`] on failure, otherwise returns a [`Response`] with the specified
+/// attributes if the operation was successful.
+/// ## Params
+/// * **deps** is an object of type [`DepsMut`].
+///
+/// * **env** is an object of type [`Env`].
+///
+/// * **info** is an object of type [`MessageInfo`].
+///
+/// * **assets** is an array with two objects of type [`Asset`]. These are the assets available in the pool.
+///
+/// * **slippage_tolerance** is an [`Option`] field of type [`Decimal`]. It is used to specify how much
+/// the pool price can move until the provide liquidity transaction goes through.
+///
+/// * **receiver** is an [`Option`] field of type [`String`]. This is the receiver of the LP tokens.
+/// If no custom receiver is specified, the pair will mint LP tokens for the function caller.
+// NOTE - the address that wants to provide liquidity should approve the pair contract to pull its relevant tokens.
+pub fn provide_liquidity(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    assets: Vec<Asset>,
+    slippage_tolerance: Option<Decimal>,
+    receiver: Option<String>,
+) -> Result<Response, ContractError> {
+
+    // Check assets for valid formatting
+    for asset in &assets{
+        asset.info.check(deps.api)?;
+    }
+
+    // Validate amount of native tokens transferred
+    for asset in assets.iter() {
+        asset.assert_sent_native_token_balance(&info)?;
+    }
+
+    // Retrieve each asset pool, and order the deposit assets in the same order as the pools
+    let mut basket: Basket = BASKET.load(deps.storage)?;
+    let mut pools: Vec<Asset> = basket.get_pools();
+    let deposits: Vec<Uint128> = {
+        let mut v = vec![];
+        for pool in &pools {
+            v.push(assets
+                .iter()
+                .find(|a| a.info.equal(&pool.info))
+                .map(|a| a.amount)
+                .expect("Wrong asset info is given"));
+        }
+        v
+    };
+       
+    let mut messages: Vec<CosmosMsg> = vec![];
+    for (i, pool) in pools.iter_mut().enumerate() {
+        // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
+        if let AssetInfo::Token { contract_addr, .. } = &pool.info {
+            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: contract_addr.to_string(),
+                msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
+                    owner: info.sender.to_string(),
+                    recipient: env.contract.address.to_string(),
+                    amount: deposits[i],
+                })?,
+                funds: vec![],
+            }));
+        } else {
+            // If the asset is native token, the pool balance is already increased
+            // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
+            pool.amount = pool.amount.checked_sub(deposits[i])?;
+        }
+    }
+
+    // Need to check this part still
+    // let total_share = query_supply(&deps.querier, config.pair_info.liquidity_token.clone())?;
+    // let share = if total_share.is_zero() {
+    //     // Initial share = collateral amount
+    //     Uint128::new(
+    //         (U256::from(deposits[0].u128()) * U256::from(deposits[1].u128()))
+    //             .integer_sqrt()
+    //             .as_u128(),
+    //     )
+    // } else {
+    //     // Assert slippage tolerance
+    //     assert_slippage_tolerance(slippage_tolerance, &deposits, &pools)?;
+
+    //     // min(1, 2)
+    //     // 1. sqrt(deposit_0 * exchange_rate_0_to_1 * deposit_0) * (total_share / sqrt(pool_0 * pool_1))
+    //     // == deposit_0 * total_share / pool_0
+    //     // 2. sqrt(deposit_1 * exchange_rate_1_to_0 * deposit_1) * (total_share / sqrt(pool_1 * pool_1))
+    //     // == deposit_1 * total_share / pool_1
+    //     std::cmp::min(
+    //         deposits[0].multiply_ratio(total_share, pools[0].amount),
+    //         deposits[1].multiply_ratio(total_share, pools[1].amount),
+    //     )
+    // };
+
+    // // Mint LP tokens for the sender or for the receiver (if set)
+    // let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
+    // messages.extend(mint_liquidity_token_message(
+    //     deps.as_ref(),
+    //     &config,
+    //     env.clone(),
+    //     addr_validate_to_lower(deps.api, receiver.as_str())?,
+    //     share,
+    //     auto_stake,
+    // )?);
+
+    // // Accumulate prices for the assets in the pool
+    // if let Some((price0_cumulative_new, price1_cumulative_new, block_time)) =
+    //     accumulate_prices(env, &config, pools[0].amount, pools[1].amount)?
+    // {
+    //     config.price0_cumulative_last = price0_cumulative_new;
+    //     config.price1_cumulative_last = price1_cumulative_new;
+    //     config.block_time_last = block_time;
+    //     CONFIG.save(deps.storage, &config)?;
+    // }
+
+    // Ok(Response::new().add_messages(messages).add_attributes(vec![
+    //     attr("action", "provide_liquidity"),
+    //     attr("sender", info.sender.as_str()),
+    //     attr("receiver", receiver.as_str()),
+    //     attr("assets", format!("{}, {}", assets[0], assets[1])),
+    //     attr("share", share.to_string()),
+    // ]))
+    Ok(Response::new())
+}
+
+
 pub struct AumResult {
     pub aum: Uint128,
     pub price: i64,
