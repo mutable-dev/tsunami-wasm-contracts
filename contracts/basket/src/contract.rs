@@ -14,8 +14,7 @@ use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
 use std::cmp::max;
-use pyth_sdk_terra::{PriceFeed, Price};
-
+use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
 
 
 /// Contract name that is used for migration.
@@ -116,7 +115,25 @@ pub fn withdraw_liquidity(
     // TODO: encode which asset to withdraw in msg (may not be possible. may need some reworking)
     // For now, just send back luna always 
     let asset_info: AssetInfo = basket_asset.info;
-    let refund_asset = basket.withdraw_amount(amount, asset_info); // get_share_in_assets(&pools, amount, total_share);
+
+    // Mock Pyth prices
+    let price = PriceFeed::new(
+        PriceIdentifier::new([0; 32]),
+        PriceStatus::default(),
+        0,
+        6,
+        5,
+        10_000_000,
+        PriceIdentifier::new([0; 32]),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+    );
+    let refund_asset = basket.withdraw_amount(amount, &[price], asset_info)?; // get_share_in_assets(&pools, amount, total_share);
 
     // Update the pool info
     let messages: Vec<CosmosMsg> = vec![
