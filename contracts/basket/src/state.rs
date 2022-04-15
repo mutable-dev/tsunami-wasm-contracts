@@ -170,13 +170,13 @@ impl Basket {
 		let mut precise_price = 0;
 		let mut exponent =  1;
 		let mut current_basket_asset: &BasketAsset = &self.assets[0];
-			let reserve_asset_denom: String;
-			match reserve_basket_asset_info {
-					AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
-					_ => {
-							return Err(ContractError::NonNativeAssetAssertion{});
-					}
-			}
+		let reserve_asset_denom: String;
+		match reserve_basket_asset_info {
+				AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
+				_ => {
+						return Err(ContractError::NonNativeAssetAssertion{});
+				}
+		}
 
 		for (i, pyth_price) in prices.iter().enumerate() {
 			current_basket_asset = &self.assets[i];
