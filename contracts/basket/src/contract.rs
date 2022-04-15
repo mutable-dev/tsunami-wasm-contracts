@@ -639,59 +639,74 @@ pub fn provide_liquidity(
         }
     }
 
-    // Need to check this part still
-    // let total_share = query_supply(&deps.querier, config.pair_info.liquidity_token.clone())?;
-    // let share = if total_share.is_zero() {
-    //     // Initial share = collateral amount
-    //     Uint128::new(
-    //         (U256::from(deposits[0].u128()) * U256::from(deposits[1].u128()))
-    //             .integer_sqrt()
-    //             .as_u128(),
-    //     )
-    // } else {
-    //     // Assert slippage tolerance
-    //     assert_slippage_tolerance(slippage_tolerance, &deposits, &pools)?;
 
-    //     // min(1, 2)
-    //     // 1. sqrt(deposit_0 * exchange_rate_0_to_1 * deposit_0) * (total_share / sqrt(pool_0 * pool_1))
-    //     // == deposit_0 * total_share / pool_0
-    //     // 2. sqrt(deposit_1 * exchange_rate_1_to_0 * deposit_1) * (total_share / sqrt(pool_1 * pool_1))
-    //     // == deposit_1 * total_share / pool_1
-    //     std::cmp::min(
-    //         deposits[0].multiply_ratio(total_share, pools[0].amount),
-    //         deposits[1].multiply_ratio(total_share, pools[1].amount),
-    //     )
-    // };
+    // Begin calculating amount of LP token to mint
 
-    // // Mint LP tokens for the sender or for the receiver (if set)
-    // let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
-    // messages.extend(mint_liquidity_token_message(
-    //     deps.as_ref(),
-    //     &config,
-    //     env.clone(),
-    //     addr_validate_to_lower(deps.api, receiver.as_str())?,
-    //     share,
-    //     auto_stake,
-    // )?);
+    // Get price feeds, prices of basket assets
+    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
+    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
-    // // Accumulate prices for the assets in the pool
-    // if let Some((price0_cumulative_new, price1_cumulative_new, block_time)) =
-    //     accumulate_prices(env, &config, pools[0].amount, pools[1].amount)?
-    // {
-    //     config.price0_cumulative_last = price0_cumulative_new;
-    //     config.price1_cumulative_last = price1_cumulative_new;
-    //     config.block_time_last = block_time;
-    //     CONFIG.save(deps.storage, &config)?;
-    // }
+    // Calculate value of user deposits
+    let mut v: Vec<(Price, i64, i32)> = vec![];
+    let amounts: &[(Price, i64, i32)] = {
+        for i in 0..deposits.len() {
+            v.push((prices[i], safe_u128_to_i64(deposits[i].u128())?, prices[i].expo));
+        }
+        v.as_slice()
+    };
+    let result_expo: i32 = 9; // TODO: figure out what we want here.
+    let user_deposit_value: Uint128 = Uint128::new(safe_i64_to_u128(Price::price_basket(amounts, result_expo).expect("Couldn't compute user deposit value").price)?);
 
-    // Ok(Response::new().add_messages(messages).add_attributes(vec![
-    //     attr("action", "provide_liquidity"),
-    //     attr("sender", info.sender.as_str()),
-    //     attr("receiver", receiver.as_str()),
-    //     attr("assets", format!("{}, {}", assets[0], assets[1])),
-    //     attr("share", share.to_string()),
-    // ]))
-    Ok(Response::new())
+
+    // Calculate aum
+    // TODO: ensure reserve_basket_asset_info is the correct one
+    let aum_result = basket.calculate_aum(&price_feeds, &basket.assets[0].info)?;
+    
+    // Retrieve LP token supply
+    let total_share: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
+
+    
+    // Calculate share pre-fees
+    let share: Uint128 = if total_share.is_zero() {
+
+        // Handle deposit into empty basket at 1:1 USD mint
+        user_deposit_value
+
+    } else {
+
+        // Handle deposit into nonempty basket
+
+        // TODO: do we need to check for slippage for any reason if we use oracles? Maybe if user doesn't want to pay max bps fee?
+        // Assert slippage tolerance
+        // assert_slippage_tolerance(slippage_tolerance, &deposits, &pools)?;
+
+        // exchange rate is (lp supply) / (aum)
+        // here we value * rate = value * lp supply / aum, safely
+        user_deposit_value.multiply_ratio(total_share, aum_result.aum)
+    };
+
+    // TODO: I think this is where we subtract fees from share. I may be wrong.
+    // Also I think first depositor is charged no fee if we do it here because they just get minted less but they own 100% of lp token.
+    // Maybe we take difference and mint it to some fee wallet?
+
+    // Mint LP tokens for the sender or for the receiver (if set)
+    let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
+    messages.extend(mint_liquidity_token_message(
+        deps.as_ref(),
+        &basket,
+        env.clone(),
+        validate_addr(deps.api, &receiver)?,
+        share,
+    ).map_err(|_| ContractError::LpMintFailed)?);
+
+    // Return response with attributes
+    Ok(Response::new().add_messages(messages).add_attributes(vec![
+        attr("action", "provide_liquidity"),
+        attr("sender", info.sender.as_str()),
+        attr("receiver", receiver.as_str()),
+        attr("assets", format!("{:?}", &assets)),
+        attr("share", share.to_string()),
+    ]))
 }
 
 
