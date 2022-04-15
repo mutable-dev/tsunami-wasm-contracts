@@ -42,7 +42,7 @@ pub enum ContractError {
     NonNativeAssetAssertion {},
 
     #[error("Unable to retrieve pyth price")]
-    PriceFeedNotFound{}
+    OracleQueryFailed{}
 }
 
 impl From<OverflowError> for ContractError {

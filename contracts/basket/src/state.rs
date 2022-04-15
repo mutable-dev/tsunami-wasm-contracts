@@ -185,7 +185,7 @@ impl Basket {
 					let price: Price;
 					match price_option {
 							Some(price_res) => price = price_res,
-							_ => return Err(ContractError::PriceFeedNotFound{})
+							_ => return Err(ContractError::OracleQueryFailed {})
 					};
 
 					// Assumes only native assets for now
