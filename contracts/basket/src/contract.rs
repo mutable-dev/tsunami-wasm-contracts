@@ -753,3 +753,41 @@ pub fn calculate_aum(
 	}
 	Ok(AumResult{ aum, price: precise_price, exponent })
 }
+
+/// ## Description
+/// Mint LP tokens for a beneficiary and auto stake the tokens in the Generator contract (if auto staking is specified).
+/// # Params
+/// * **deps** is an object of type [`Deps`].
+///
+/// * **config** is an object of type [`Config`].
+///
+/// * **env** is an object of type [`Env`].
+///
+/// * **recipient** is an object of type [`Addr`]. This is the LP token recipient.
+///
+/// * **amount** is an object of type [`Uint128`]. This is the amount of LP tokens that will be minted for the recipient.
+///
+/// * **auto_stake** is the field of type [`bool`]. Determines whether the newly minted LP tokens will
+/// be automatically staked in the Generator on behalf of the recipient.
+fn mint_liquidity_token_message(
+    deps: Deps,
+    basket: &Basket,
+    env: Env,
+    recipient: Addr,
+    amount: Uint128,
+) -> Result<Vec<CosmosMsg>, ContractError> {
+
+    // Retrieve lp token contract address
+    let lp_token = basket.lp_token_address.clone();
+
+    // Mint to Recipient
+    return Ok(vec![CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: lp_token.to_string(),
+        msg: to_binary(&Cw20ExecuteMsg::Mint {
+            recipient: recipient.to_string(),
+            amount,
+        })?,
+        funds: vec![],
+    })]);
+}
+
