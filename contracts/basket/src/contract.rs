@@ -791,3 +791,22 @@ fn mint_liquidity_token_message(
     })]);
 }
 
+
+
+fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {
+    let output = input as i64;
+    if output as u128 == input {
+        return Ok(output)
+    } else {
+        return Err(ContractError::FailedCast)
+    }
+}
+
+fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
+    let output = input as u128;
+    if output as i64 == input {
+        return Ok(output)
+    } else {
+        return Err(ContractError::FailedCast)
+    }
+}
