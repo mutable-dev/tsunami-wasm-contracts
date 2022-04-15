@@ -79,7 +79,7 @@ pub fn execute(
 //     let mut basket: Basket = BASKET.load(deps.storage)?;
 
 //     if basket.lp_token_address != Addr::unchecked("") {
-//         return Err(ContractError::Unauthorized {});
+//         return Err(ContractError::Unauthorized);
 //     }
 
 //     let data = msg.result.unwrap().data.unwrap();
@@ -110,7 +110,7 @@ pub fn withdraw_liquidity(
 
     // Abort if not from basket lp token contract
     if info.sender != basket.lp_token_address {
-        return Err(ContractError::Unauthorized {});
+        return Err(ContractError::Unauthorized);
     }
 
     // TODO: encode which asset to withdraw in msg (may not be possible. may need some reworking)
@@ -217,7 +217,7 @@ fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError
     let mut asset_names: Vec<String> = Vec::new();
     for asset in assets {
         if asset_names.contains(&asset.address.to_string()) {
-            return Err(ContractError::DuplicateAssetAssertion{})
+            return Err(ContractError::DuplicateAssetAssertion)
         }
         asset_names.push(asset.address.to_string());
     }
@@ -292,7 +292,7 @@ pub fn receive_cw20(
             }
 
             if !authorized {
-                return Err(ContractError::Unauthorized {});
+                return Err(ContractError::Unauthorized);
             }
 
             let to_addr = if let Some(to_addr) = to {
@@ -393,7 +393,7 @@ pub fn swap(
     //     offer_pool = pools[1].clone();
     //     ask_pool = pools[0].clone();
     // } else {
-    //     return Err(ContractError::AssetMismatch {});
+    //     return Err(ContractError::AssetMismatch);
     // }
 
     // // Get fee info from the factory
@@ -717,7 +717,7 @@ pub fn calculate_aum(
     match reserve_asset_info {
         AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
         _ => {
-            return Err(ContractError::NonNativeAssetAssertion{});
+            return Err(ContractError::NonNativeAssetAssertion);
         }
     }
 
@@ -728,7 +728,7 @@ pub fn calculate_aum(
         let price: Price;
         match price_option {
             Some(price_res) => price = price_res,
-            _ => return Err(ContractError::PriceFeedNotFound{})
+            _ => return Err(ContractError::OracleQueryFailed)
         };
 
         // Assumes only native assets for now

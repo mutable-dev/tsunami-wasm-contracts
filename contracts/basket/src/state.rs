@@ -175,7 +175,7 @@ impl Basket {
 		match reserve_basket_asset_info {
 				AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
 				_ => {
-						return Err(ContractError::NonNativeAssetAssertion{});
+						return Err(ContractError::NonNativeAssetAssertion);
 				}
 		}
 
@@ -186,7 +186,7 @@ impl Basket {
 					let price: Price;
 					match price_option {
 							Some(price_res) => price = price_res,
-							_ => return Err(ContractError::OracleQueryFailed {})
+							_ => return Err(ContractError::OracleQueryFailed)
 					};
 
 					// Assumes only native assets for now
@@ -288,7 +288,7 @@ impl Basket {
 				v.push(
 					match query_price_feed(querier, asset.oracle_address.to_string(), dummy_identifier) {
 						Ok(price_feed_response) => price_feed_response.price_feed,
-						_ => return Err(ContractError::OracleQueryFailed {})
+						_ => return Err(ContractError::OracleQueryFailed)
 					}
 				);
 			}
@@ -300,7 +300,7 @@ impl Basket {
 	pub fn get_prices(&self, querier: &QuerierWrapper) -> Result<Vec<Price>, ContractError> {
 		let price_feeds: Vec<PriceFeed> = match self.get_price_feeds(querier) {
 			Ok(price_feeds) => price_feeds,
-			_ => return Err(ContractError::OracleQueryFailed {})
+			_ => return Err(ContractError::OracleQueryFailed)
 		};
 		Ok(price_feeds
 			.iter()

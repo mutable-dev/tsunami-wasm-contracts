@@ -9,40 +9,46 @@ pub enum ContractError {
     Std(#[from] StdError),
 
     #[error("Unauthorized")]
-    Unauthorized {},
+    Unauthorized,
 
     #[error("Operation non supported")]
-    NonSupported {},
+    NonSupported,
 
     #[error("Event of zero transfer")]
-    InvalidZeroAmount {},
+    InvalidZeroAmount,
 
     #[error("Operation exceeds max spread limit")]
-    MaxSpreadAssertion {},
+    MaxSpreadAssertion,
 
     #[error("Provided spread amount exceeds allowed limit")]
-    AllowedSpreadAssertion {},
+    AllowedSpreadAssertion,
 
     #[error("Operation exceeds max splippage tolerance")]
-    MaxSlippageAssertion {},
+    MaxSlippageAssertion,
 
     #[error("Doubling assets in asset infos")]
-    DoublingAssets {},
+    DoublingAssets,
 
     #[error("Asset mismatch between the requested and the stored asset in contract")]
-    AssetMismatch {},
+    AssetMismatch,
 
     #[error("Pair type mismatch. Check factory pair configs")]
-    PairTypeMismatch {},
+    PairTypeMismatch,
 
     #[error("Duplicate asset provided")]
-    DuplicateAssetAssertion {},
+    DuplicateAssetAssertion,
 
     #[error("Unsupported non-native asset provided")]
-    NonNativeAssetAssertion {},
+    NonNativeAssetAssertion,
 
     #[error("Unable to retrieve pyth price")]
-    OracleQueryFailed{}
+    OracleQueryFailed,
+
+    #[error("Failed to cast between types safely")]
+    FailedCast,
+
+    #[error("Failed to mint lp token")]
+    LpMintFailed,
 }
 
 impl From<OverflowError> for ContractError {
