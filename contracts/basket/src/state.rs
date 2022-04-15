@@ -1,12 +1,13 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
-use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
+use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus, query_price_feed};
+use std::cfg;
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -238,6 +239,73 @@ impl Basket {
 			})
 		}
 		v
+	}
+
+	/// TODO: Get actual oracle price feeds
+	pub fn get_price_feeds(&self, querier: &QuerierWrapper) -> Result<Vec<PriceFeed>, ContractError> {
+
+		if cfg!(feature = "test")
+		{
+			let mut v = vec![];
+			for asset in &self.assets {
+				let dummy_time = 0;
+				let dummy_exponent = 0;
+				let dummy_max_num_publishers = 5;
+				let dummy_num_publishers = 3;
+				let dummy_exponent = 0;
+				let dummy_price = 1_000_000;
+				let dummy_conf = 1_000;
+				let dummy_ema_price = 1_000_000;
+				let dummy_ema_conf = 1_000;
+				let dummy_prev_price = 1_000_000;
+				let dummy_prev_conf = 1_000_000;
+				let dummy_pref_publish_time = -10;
+				v.push(
+					PriceFeed::new(
+						PriceIdentifier::new([0; 32]),
+						PriceStatus::Trading,
+						dummy_time,
+						dummy_exponent,
+						dummy_max_num_publishers,
+						dummy_num_publishers,
+						PriceIdentifier::new([0; 32]),
+						dummy_price,
+						dummy_conf,
+						dummy_ema_price,
+						dummy_ema_conf,
+						dummy_prev_price,
+						dummy_prev_conf,
+						dummy_pref_publish_time,
+					)
+				);
+			}
+			return Ok(v)
+		} else {
+			let mut v = vec![];
+			for asset in &self.assets {
+				// TODO: ADD REAL PRICE IDENTIFIERS
+				let dummy_identifier = PriceIdentifier::new([0; 32]);
+				v.push(
+					match query_price_feed(querier, asset.oracle_address.to_string(), dummy_identifier) {
+						Ok(price_feed_response) => price_feed_response.price_feed,
+						_ => return Err(ContractError::OracleQueryFailed {})
+					}
+				);
+			}
+			return Ok(v)
+		}
+	}
+
+	// This uses `get_price_feeds` and goes a step further to unwrap `Price`s.
+	pub fn get_prices(&self, querier: &QuerierWrapper) -> Result<Vec<Price>, ContractError> {
+		let price_feeds: Vec<PriceFeed> = match self.get_price_feeds(querier) {
+			Ok(price_feeds) => price_feeds,
+			_ => return Err(ContractError::OracleQueryFailed {})
+		};
+		Ok(price_feeds
+			.iter()
+			.map(|&x| x.get_current_price().unwrap())
+			.collect())
 	}
 }
 
