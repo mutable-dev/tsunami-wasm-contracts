@@ -117,6 +117,7 @@ pub fn withdraw_liquidity(
     let asset_info: AssetInfo = basket_asset.info;
 
     // Mock Pyth prices
+    // TODO: update to actual pyth oracle price feeds
     let price = PriceFeed::new(
         PriceIdentifier::new([0; 32]),
         PriceStatus::default(),
