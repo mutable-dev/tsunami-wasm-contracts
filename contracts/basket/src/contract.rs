@@ -5,7 +5,6 @@ use crate::{
     state::{Basket, BasketAsset, BASKET},
     querier::query_supply,
 };
-use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
@@ -13,7 +12,6 @@ use cosmwasm_std::{
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
-use protobuf::Message;
 use std::cmp::max;
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
 
@@ -707,66 +705,6 @@ pub fn provide_liquidity(
         attr("assets", format!("{:?}", &assets)),
         attr("share", share.to_string()),
     ]))
-}
-
-
-pub struct AumResult {
-    pub aum: Uint128,
-    pub price: i64,
-    pub exponent: i32,
-}
-
-// CHECK: that we should take the value of the token account as AUM and not the general reserves from the
-// available asset account
-pub fn calculate_aum(
-	prices: &Vec<PriceFeed>, 
-	basket_assets: &[&BasketAsset],
-	reserve_basket_asset: &BasketAsset,
-) -> Result<AumResult, ContractError> {
-	let mut aum = Uint128::new(0);
-	let mut precise_price = 0;
-	let mut exponent =  1;
-	let mut current_basket_asset: &BasketAsset = &basket_assets[0];
-    let reserve_asset_info: &AssetInfo = &reserve_basket_asset.info;
-    let reserve_asset_denom: String;
-    match reserve_asset_info {
-        AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
-        _ => {
-            return Err(ContractError::NonNativeAssetAssertion);
-        }
-    }
-
-	for (i, pyth_price) in prices.iter().enumerate() {
-		current_basket_asset = &basket_assets[i];
-
-		let price_option = pyth_price.get_current_price();
-        let price: Price;
-        match price_option {
-            Some(price_res) => price = price_res,
-            _ => return Err(ContractError::OracleQueryFailed)
-        };
-
-        // Assumes only native assets for now
-        let current_asset_info: &AssetInfo = &current_basket_asset.info; 
-
-        match current_asset_info {
-            AssetInfo::NativeToken{ denom } => {
-                if denom == &reserve_asset_denom {
-                    exponent = price.expo.abs();
-                    precise_price = price.price;
-                }
-            },
-            _ =>  ()
-        }
-
-		aum += current_basket_asset.pool_reserves.checked_mul(Uint128::new(price.price as u128))
-            .unwrap()
-			.checked_div(
-				Uint128::new(10_u64.pow(price.expo.abs() as u32) as u128)
-			)
-			.unwrap();
-	}
-	Ok(AumResult{ aum, price: precise_price, exponent })
 }
 
 /// ## Description

@@ -1,7 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128, QuerierWrapper};
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256};
+use std::convert::{TryFrom, TryInto};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo};
@@ -202,15 +203,19 @@ impl Basket {
 							_ =>  ()
 					}
 
-			aum += current_basket_asset.pool_reserves.checked_mul(Uint128::new(price.price as u128))
-							.unwrap()
+			aum += Uint128::try_from(
+				Uint256::from_uint128(current_basket_asset.pool_reserves)
+				.checked_mul(Uint256::from_uint128(Uint128::new(price.price as u128)))
+				.unwrap()
 				.checked_div(
-					Uint128::new(10_u64.pow(price.expo.abs() as u32) as u128)
+					Uint256::from_uint128(Uint128::new(10_u64.pow(price.expo.abs() as u32) as u128))
 				)
+				.unwrap())
 				.unwrap();
 		}
 		Ok(AumResult{ aum, price: precise_price, exponent })
 	}
+	
 
 	/// TODO: Calculates total number of lp tokens
 	pub fn total_tokens(&self) -> Uint128 {
