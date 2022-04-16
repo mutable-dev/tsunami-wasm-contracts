@@ -559,6 +559,7 @@ pub fn calculate_fee_basis_points(
 		average_diff = target_lp_usd_value ;
 	}
 
+    // TODO: perhaps do safer U256 mul + div -> U128?
 	let penalty = PENALTY_IN_BASIS_POINTS * average_diff / target_lp_usd_value ;
 	return FEE_IN_BASIS_POINTS + penalty
 }
