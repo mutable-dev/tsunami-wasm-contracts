@@ -49,6 +49,9 @@ pub enum ContractError {
 
     #[error("Failed to mint lp token")]
     LpMintFailed,
+
+    #[error("The asset the user is asking for is not in this basket")]
+    AssetNotInBasket,
 }
 
 impl From<OverflowError> for ContractError {

@@ -16,6 +16,7 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
 use std::cmp::max;
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
+use std::convert::TryInto;
 
 
 /// Contract name that is used for migration.
@@ -277,6 +278,7 @@ pub fn receive_cw20(
             belief_price,
             max_spread,
             to,
+            ask_asset,
         }) => {
 
             // Only asset contract can execute this message
@@ -313,6 +315,7 @@ pub fn receive_cw20(
                 belief_price,
                 max_spread,
                 to_addr,
+                ask_asset,
             )
         }
         Ok(Cw20HookMsg::WithdrawLiquidity { basket_asset} ) => withdraw_liquidity(
@@ -362,55 +365,61 @@ pub fn swap(
     belief_price: Option<Decimal>,
     max_spread: Option<Decimal>,
     to: Option<Addr>,
+    ask_asset: AssetInfo,
 ) -> Result<Response, ContractError> {
 
-    // offer_asset.assert_sent_native_token_balance(&info)?;
+    // Ensure native token was sent
+    offer_asset.assert_sent_native_token_balance(&info)?;
 
-    // let mut basket: Basket = BASKET.load(deps.storage)?;
+    // Load basket singleton
+    let mut basket: Basket = BASKET.load(deps.storage)?;
 
-    // // If the asset balance is already increased, we should subtract the user deposit from the pool amount
-    // let pools: Vec<Asset> = basket
-    //     .pair_info
-    //     .query_pools(&deps.querier, env.clone().contract.address)?
-    //     .iter()
-    //     .map(|p| {
-    //         let mut p = p.clone();
-    //         if p.info.equal(&offer_asset.info) {
-    //             p.amount = p.amount.checked_sub(offer_asset.amount).unwrap();
-    //         }
+    // If the asset balance is already increased, we should subtract the user deposit from the pool amount
+    let pools: Vec<Asset> = basket
+        .get_pools()
+        .iter()
+        .map(|p| {
+            let mut p = p.clone();
+            if p.info.equal(&offer_asset.info) {
+                p.amount = p.amount.checked_sub(offer_asset.amount).unwrap();
+            }
 
-    //         p
-    //     })
-    //     .collect();
+            p
+        })
+        .collect();
 
-    // let offer_pool: Asset;
-    // let ask_pool: Asset;
+    // Grab relevant asset pools in basket, zipped with price
+    let offer_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(pool, _price)| offer_asset.info.equal(&pool.info)) {
+            Some((pool, price)) => (pool.clone(), price.clone()),
+            None => return Err(ContractError::AssetNotInBasket)
+    };
+    let ask_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(pool, _price)| ask_asset.equal(&pool.info)) {
+            Some((pool, price)) => (pool.clone(), price.clone()),
+            None => return Err(ContractError::AssetNotInBasket)
+    };
 
-    // if offer_asset.info.equal(&pools[0].info) {
-    //     offer_pool = pools[0].clone();
-    //     ask_pool = pools[1].clone();
-    // } else if offer_asset.info.equal(&pools[1].info) {
-    //     offer_pool = pools[1].clone();
-    //     ask_pool = pools[0].clone();
-    // } else {
-    //     return Err(ContractError::AssetMismatch);
-    // }
-
-    // // Get fee info from the factory
+    // TODO: JEFF
+    // Get fee info from the factory
     // let fee_info = query_fee_info(
     //     &deps.querier,
     //     basket.factory_addr.clone(),
     //     basket.pair_info.pair_type.clone(),
     // )?;
 
-    // let offer_amount = offer_asset.amount;
-    // let (return_amount, spread_amount, commission_amount) = compute_swap(
-    //     offer_pool.amount,
-    //     ask_pool.amount,
-    //     offer_amount,
-    //     fee_info.total_fee_rate,
-    // )?;
 
+    // Calculate pre-fee, pre-tax return amount
+    let offer_amount = offer_asset.amount;
+    let result_expo = 8; // TODO: update this 
+    let token_decimals = 5; // TODO: verify this is what price_basket wants, and then if so replace with CW20 query for decimals.
+    let ask_to_offer_price = ask_pool.1.get_price_in_quote(&offer_pool.1, result_expo).unwrap();
+    let return_amount = Uint128::new(
+        Price::price_basket(&[(ask_to_offer_price, safe_u128_to_i64(offer_amount.u128())?, token_decimals)], result_expo).unwrap().price
+        .try_into().unwrap()
+    );
+
+    // TODO: JEFF
     // // Check the max spread limit (if it was specified)
     // assert_max_spread(
     //     belief_price,
@@ -420,18 +429,19 @@ pub fn swap(
     //     spread_amount,
     // )?;
 
-    // // Compute the tax for the receiving asset (if it is a native one)
-    // let return_asset = Asset {
-    //     info: ask_pool.info.clone(),
-    //     amount: return_amount,
-    // };
+    // Compute the tax for the receiving asset (if it is a native one)
+    let return_asset = Asset {
+        info: ask_pool.0.info.clone(),
+        amount: return_amount,
+    };
+    // TODO: when is tax amount used?
+    let tax_amount = return_asset.compute_tax(&deps.querier)?;
+    let receiver = to.unwrap_or_else(|| sender.clone());
+    let mut messages: Vec<CosmosMsg> =
+        vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
 
-    // let tax_amount = return_asset.compute_tax(&deps.querier)?;
-    // let receiver = to.unwrap_or_else(|| sender.clone());
-    // let mut messages: Vec<CosmosMsg> =
-    //     vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
-
-    // // Compute the Maker fee
+    // TODO JEFF
+    // Compute the Maker fee
     // let mut maker_fee_amount = Uint128::new(0);
     // if let Some(fee_address) = fee_info.fee_address {
     //     if let Some(f) = calculate_maker_fee(
@@ -444,37 +454,25 @@ pub fn swap(
     //     }
     // }
 
-    // // Accumulate prices for the assets in the pool
-    // if let Some((price0_cumulative_new, price1_cumulative_new, block_time)) =
-    //     accumulate_prices(env, &basket, pools[0].amount, pools[1].amount)?
-    // {
-    //     basket.price0_cumulative_last = price0_cumulative_new;
-    //     basket.price1_cumulative_last = price1_cumulative_new;
-    //     basket.block_time_last = block_time;
-    //     CONFIG.save(deps.storage, &basket)?;
-    // }
 
-    // Ok(Response::new()
-    //     .add_messages(
-    //         // 1. send collateral tokens from the contract to a user
-    //         // 2. send inactive commission fees to the Maker ontract
-    //         messages,
-    //     )
-    //     .add_attribute("action", "swap")
-    //     .add_attribute("sender", sender.as_str())
-    //     .add_attribute("receiver", receiver.as_str())
-    //     .add_attribute("offer_asset", offer_asset.info.to_string())
-    //     .add_attribute("ask_asset", ask_pool.info.to_string())
-    //     .add_attribute("offer_amount", offer_amount.to_string())
-    //     .add_attribute("return_amount", return_amount.to_string())
-    //     .add_attribute("tax_amount", tax_amount.to_string())
-    //     .add_attribute("spread_amount", spread_amount.to_string())
-    //     .add_attribute("commission_amount", commission_amount.to_string())
-    //     .add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
-    
-
-    // TODO: IMPLEMENT FN AND REMOVE THIS OK
-    Ok(Response::new())
+    Ok(Response::new()
+        .add_messages(
+            // 1. send collateral tokens from the contract to a user
+            // 2. send inactive commission fees to the Maker ontract
+            messages,
+        )
+        .add_attribute("action", "swap")
+        .add_attribute("sender", sender.as_str())
+        .add_attribute("receiver", receiver.as_str())
+        .add_attribute("offer_asset", offer_asset.info.to_string())
+        .add_attribute("ask_asset", ask_pool.0.info.to_string())
+        .add_attribute("offer_amount", offer_amount.to_string())
+        .add_attribute("return_amount", return_amount.to_string())
+        .add_attribute("tax_amount", tax_amount.to_string())
+        //.add_attribute("spread_amount", spread_amount.to_string())
+        //.add_attribute("commission_amount", commission_amount.to_string())
+        //.add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
+    )
 }
 
 // cases to consider

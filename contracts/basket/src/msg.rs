@@ -117,6 +117,7 @@ pub enum Cw20HookMsg {
         belief_price: Option<Decimal>,
         max_spread: Option<Decimal>,
         to: Option<String>,
+        ask_asset: AssetInfo,
     },
     /// Withdraw liquidity from the pool
     WithdrawLiquidity { basket_asset: BasketAsset },
