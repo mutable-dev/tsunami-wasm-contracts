@@ -8,13 +8,13 @@ use crate::{
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
-    WasmMsg, Api
+    WasmMsg, Api, Uint256
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use std::cmp::max;
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 
 
 /// Contract name that is used for migration.
@@ -406,9 +406,67 @@ pub fn swap(
     //     basket.pair_info.pair_type.clone(),
     // )?;
 
+    // Get price feeds, prices of basket assets
+    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
+    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
+
+    let offer_aum_result  = basket.calculate_aum(
+        &price_feeds,
+        &offer_asset.info
+    ).unwrap();
+
+    let ask_aum_result  = basket.calculate_aum(
+        &price_feeds,
+        &ask_asset
+    ).unwrap();
+
+    let gross_output_asset_out = Uint256::from_uint128(
+        Uint128::new(offer_aum_result.price as u128))
+        .checked_mul(Uint256::from_uint128(offer_asset.amount)).unwrap()
+        .checked_mul(
+            Uint256::from_uint128(Uint128::new(10_u128.pow(ask_aum_result.exponent as u32)))
+        ).unwrap()
+        .checked_div(
+            Uint256::from_uint128(Uint128::new(ask_aum_result.price  as u128))
+        ).unwrap()
+        .checked_div(
+            Uint256::from_uint128(Uint128::new(10_u128.pow(offer_aum_result.exponent as u32)))).
+        unwrap();
+
+    let offer_fee_in_basis_points = calculate_fee_basis_points(
+        offer_aum_result.aum, 
+        basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
+        basket.total_weights, 
+        Uint128::new(offer_aum_result.price as u128),
+        offer_aum_result.exponent as u32,
+        offer_asset.amount, 
+        true
+    );
+
+    let ask_fee_in_basis_points = calculate_fee_basis_points(
+        ask_aum_result.aum, 
+        basket.assets.iter().find(|asset| asset.info == ask_asset).unwrap(),
+        basket.total_weights, 
+        Uint128::new(ask_aum_result.price as u128),
+        ask_aum_result.exponent as u32,
+        Uint128::try_from(gross_output_asset_out).unwrap(), 
+        true
+    );
+
+    let net_output_asset_out = gross_output_asset_out.
+        checked_mul(Uint256::from_uint128(BASIS_POINTS_PRECISION)).
+        unwrap().
+        checked_div(
+            max(
+                Uint256::from_uint128(offer_fee_in_basis_points), 
+                Uint256::from_uint128(ask_fee_in_basis_points)
+            )
+        ).
+        unwrap();
+
 
     // Calculate pre-fee, pre-tax return amount
-    let offer_amount = offer_asset.amount;
+    let offer_amount = Uint128::try_from(net_output_asset_out).unwrap();
     let result_expo = 8; // TODO: update this 
     let token_decimals = 5; // TODO: verify this is what price_basket wants, and then if so replace with CW20 query for decimals.
     let ask_to_offer_price = ask_pool.1.get_price_in_quote(&offer_pool.1, result_expo).unwrap();

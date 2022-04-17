@@ -156,11 +156,6 @@ impl Basket {
 		}
 	}
 
-	// /// TODO: Calculates AUM
-	// pub fn calculate_aum(&self) -> Uint128 {
-	// 	Uint128::from(1_u32)
-	// }
-
 	// CHECK: that we should take the value of the token account as AUM and not the general reserves from the
 	// available asset account
 	pub fn calculate_aum(
