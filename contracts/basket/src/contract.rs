@@ -3,7 +3,7 @@ use crate::{
     msg::*,
     asset::{AssetInfo, Asset},
     state::{Basket, BasketAsset, BASKET},
-    querier::query_supply,
+    querier::{query_supply, query_token_precision},
 };
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps,
@@ -398,117 +398,69 @@ pub fn swap(
             None => return Err(ContractError::AssetNotInBasket)
     };
 
-    // TODO: JEFF
-    // Get fee info from the factory
-    // let fee_info = query_fee_info(
-    //     &deps.querier,
-    //     basket.factory_addr.clone(),
-    //     basket.pair_info.pair_type.clone(),
-    // )?;
-
     // Get price feeds, prices of basket assets
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
     let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
-    let offer_aum_result  = basket.calculate_aum(
-        &price_feeds,
-        &offer_asset.info
-    ).unwrap();
+    // Get price of ask in offer to at least SIG_FIGS sig figs (fails otherwise)
+    const SIG_FIGS: i32 = 6;
+    let ask_usd: Price = ask_pool.1;
+    let offer_usd: Price = offer_pool.1;
+    let ask_offer: Price = ask_usd.get_price_in_quote(&offer_usd, SIG_FIGS).unwrap();
 
-    let ask_aum_result  = basket.calculate_aum(
-        &price_feeds,
-        &ask_asset
-    ).unwrap();
+    // Compute gross = offer * (offer aum / ask aum) to at least SIG_FIGS sig figs (fails otherwise)
+    // TODO: check/verify which decimals this should be. Probably should be token decimals so that offer_asset.amount is just "lamports".
+    let todo_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
+    let gross_output_asset_out: Price = Price::price_basket(&[(ask_offer, safe_u128_to_i64(offer_asset.amount.u128())?, todo_decimals)], todo_decimals).unwrap();
 
-    let gross_output_asset_out = Uint256::from_uint128(
-        Uint128::new(offer_aum_result.price as u128))
-        .checked_mul(Uint256::from_uint128(offer_asset.amount)).unwrap()
-        .checked_mul(
-            Uint256::from_uint128(Uint128::new(10_u128.pow(ask_aum_result.exponent as u32)))
-        ).unwrap()
-        .checked_div(
-            Uint256::from_uint128(Uint128::new(ask_aum_result.price  as u128))
-        ).unwrap()
-        .checked_div(
-            Uint256::from_uint128(Uint128::new(10_u128.pow(offer_aum_result.exponent as u32)))).
-        unwrap();
-
-    let offer_fee_in_basis_points = calculate_fee_basis_points(
-        offer_aum_result.aum, 
+    // Compute offer fee 
+    // TODO: check if i32 -> u32 cast is safe (fails appropriately)
+    let offer_aum = basket.calculate_aum(&price_feeds, &offer_asset.info)?;
+    let offer_fee_in_basis_points: Uint128 = calculate_fee_basis_points(
+        offer_aum.aum,
         basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
         basket.total_weights, 
-        Uint128::new(offer_aum_result.price as u128),
-        offer_aum_result.exponent as u32,
+        Uint128::new(offer_aum.price as u128),
+        offer_aum.exponent as u32,
         offer_asset.amount, 
         true
     );
 
+    // Compute ask fee
+    // TODO: check if i32 -> u32 cast is safe (fails appropriately) (same with i32 -> u128)
+    let ask_aum = basket.calculate_aum(&price_feeds, &ask_asset)?;
     let ask_fee_in_basis_points = calculate_fee_basis_points(
-        ask_aum_result.aum, 
+        ask_aum.aum, 
         basket.assets.iter().find(|asset| asset.info == ask_asset).unwrap(),
         basket.total_weights, 
-        Uint128::new(ask_aum_result.price as u128),
-        ask_aum_result.exponent as u32,
-        Uint128::try_from(gross_output_asset_out).unwrap(), 
+        Uint128::new(ask_aum.price as u128),
+        ask_aum.exponent as u32,
+        Uint128::try_from(gross_output_asset_out.price as u128).unwrap(), 
         true
     );
 
-    let net_output_asset_out = gross_output_asset_out.
-        checked_mul(Uint256::from_uint128(BASIS_POINTS_PRECISION)).
-        unwrap().
-        checked_div(
+    // TODO: check if i32 -> u128 cast is safe (fails appropriately)
+    // JEFF TODO: Ensure this number of decimals is appropriate
+    let net_output_asset_out = Uint256::from_uint128(Uint128::from(gross_output_asset_out.price as u128))
+        .checked_mul(Uint256::from_uint128(BASIS_POINTS_PRECISION))
+        .unwrap()
+        .checked_div(
             max(
                 Uint256::from_uint128(offer_fee_in_basis_points), 
                 Uint256::from_uint128(ask_fee_in_basis_points)
             )
-        ).
-        unwrap();
+        )
+        .unwrap();
 
-
-    // Calculate pre-fee, pre-tax return amount
-    let offer_amount = Uint128::try_from(net_output_asset_out).unwrap();
-    let result_expo = 8; // TODO: update this 
-    let token_decimals = 5; // TODO: verify this is what price_basket wants, and then if so replace with CW20 query for decimals.
-    let ask_to_offer_price = ask_pool.1.get_price_in_quote(&offer_pool.1, result_expo).unwrap();
-    let return_amount = Uint128::new(
-        Price::price_basket(&[(ask_to_offer_price, safe_u128_to_i64(offer_amount.u128())?, token_decimals)], result_expo).unwrap().price
-        .try_into().unwrap()
-    );
-
-    // TODO: JEFF
-    // // Check the max spread limit (if it was specified)
-    // assert_max_spread(
-    //     belief_price,
-    //     max_spread,
-    //     offer_amount,
-    //     return_amount + commission_amount,
-    //     spread_amount,
-    // )?;
 
     // Compute the tax for the receiving asset (if it is a native one)
     let return_asset = Asset {
         info: ask_pool.0.info.clone(),
-        amount: return_amount,
+        amount: net_output_asset_out.try_into().expect("Failed Uint256 -> Uint128"),
     };
-    // TODO: when is tax amount used?
-    let tax_amount = return_asset.compute_tax(&deps.querier)?;
     let receiver = to.unwrap_or_else(|| sender.clone());
     let mut messages: Vec<CosmosMsg> =
         vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
-
-    // TODO JEFF
-    // Compute the Maker fee
-    // let mut maker_fee_amount = Uint128::new(0);
-    // if let Some(fee_address) = fee_info.fee_address {
-    //     if let Some(f) = calculate_maker_fee(
-    //         ask_pool.info.clone(),
-    //         commission_amount,
-    //         fee_info.maker_fee_rate,
-    //     ) {
-    //         messages.push(f.clone().into_msg(&deps.querier, fee_address)?);
-    //         maker_fee_amount = f.amount;
-    //     }
-    // }
 
 
     Ok(Response::new()
@@ -522,9 +474,8 @@ pub fn swap(
         .add_attribute("receiver", receiver.as_str())
         .add_attribute("offer_asset", offer_asset.info.to_string())
         .add_attribute("ask_asset", ask_pool.0.info.to_string())
-        .add_attribute("offer_amount", offer_amount.to_string())
-        .add_attribute("return_amount", return_amount.to_string())
-        .add_attribute("tax_amount", tax_amount.to_string())
+        .add_attribute("offer_amount", offer_asset.amount.to_string())
+        .add_attribute("return_amount", net_output_asset_out.to_string())
         //.add_attribute("spread_amount", spread_amount.to_string())
         //.add_attribute("commission_amount", commission_amount.to_string())
         //.add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
