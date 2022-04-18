@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Uint128, Decimal};
 use cw20::{Cw20Coin, MinterResponse, Cw20ReceiveMsg};
-use crate::asset::AssetInfo;
+use crate::asset::{Asset, AssetInfo};
 use crate::state::BasketAsset;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -40,7 +40,11 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    DepositLiquidity {},
+    DepositLiquidity {
+        assets: Vec<Asset>,
+        slippage_tolerance: Option<Decimal>,
+        receiver: Option<String>,
+    },
     Receive { msg: Cw20ReceiveMsg },
 }
 
