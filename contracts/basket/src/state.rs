@@ -9,6 +9,8 @@ use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus, query_price_feed};
 use std::cfg;
+use phf::{phf_map};
+
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -320,3 +322,31 @@ pub struct Oracle {
 }
 
 pub const BASKET: Item<Basket> = Item::new("basket");
+
+pub struct TickerData {
+	testnet_address: &'static str,
+	mainnet_address: &'static str,
+	testnet_price_feed: &'static str,
+	mainnet_price_feed: &'static str,
+}
+
+pub static ASSET_MAP: phf::Map<&'static str,  TickerData> = phf_map! {
+	"ust" => TickerData {
+		testnet_address: "0x0000000000000000000000000000000000000000",
+		mainnet_address: "0x0000000000000000000000000000000000000000",
+		testnet_price_feed: "0x026d1f1cf9f1c0ee92eb55696d3bd2393075b611c4f468ae5b967175edc4c25c",
+		mainnet_price_feed: "0x0000000000000000000000000000000000000000",
+	},
+	"luna" => TickerData {
+		testnet_address: "0x0000000000000000000000000000000000000000",
+		mainnet_address: "0x0000000000000000000000000000000000000000",
+		testnet_price_feed: "0x6de025a4cf28124f8ea6cb8085f860096dbc36d9c40002e221fc449337e065b2",
+		mainnet_price_feed: "0x0000000000000000000000000000000000000000",
+	},
+};
+
+pub static PYTH_CONTRACTS : phf::Map<&'static str, &'static str> = phf_map! {
+	"mainnet" => "0x0000000000000000000000000000000000000000",
+	"testnet" => "terra1hdc8q4ejy82kd9w7wj389dlul9z5zz9a36jflh",
+};
+
