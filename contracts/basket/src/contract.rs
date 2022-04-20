@@ -660,7 +660,7 @@ pub fn provide_liquidity(
         }
         v.as_slice()
     };
-    let result_expo: i32 = 9; // TODO: figure out what we want here.
+    let result_expo = -6; // TODO: ensure this is what we want. I think thi smeans we price the basket down to 1e-6 USD
     let user_deposit_value: Uint128 = Uint128::new(safe_i64_to_u128(Price::price_basket(amounts, result_expo).expect("Couldn't compute user deposit value").price)?);
 
 
@@ -675,7 +675,7 @@ pub fn provide_liquidity(
     // Calculate share pre-fees
     let share: Uint128 = if total_share.is_zero() {
 
-        // Handle deposit into empty basket at 1:1 USD mint
+        // Handle deposit into empty basket at 1:1 USD mint. First deposit gets zero fees
         user_deposit_value
 
     } else {
