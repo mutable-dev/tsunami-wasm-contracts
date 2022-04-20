@@ -1,7 +1,7 @@
 use crate::{
     error::ContractError,
     msg::*,
-    asset::{AssetInfo, Asset},
+    asset::{AssetInfo, Asset, addr_validate_to_lower},
     state::{Basket, BasketAsset, BASKET},
     querier::{query_supply, query_token_precision},
 };
@@ -15,6 +15,7 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use std::cmp::max;
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
 use std::convert::{TryInto, TryFrom};
+use protobuf::Message;
 
 
 /// Contract name that is used for migration.
@@ -73,27 +74,27 @@ pub fn execute(
     }
 }
 
-// #[cfg_attr(not(feature = "library"), entry_point)]
-// pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
-//     let mut basket: Basket = BASKET.load(deps.storage)?;
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    let mut basket: Basket = BASKET.load(deps.storage)?;
 
-//     if basket.lp_token_address != Addr::unchecked("") {
-//         return Err(ContractError::Unauthorized);
-//     }
+    if basket.lp_token_address != Addr::unchecked("") {
+        return Err(ContractError::Unauthorized);
+    }
 
-//     let data = msg.result.unwrap().data.unwrap();
-//     let res: MsgInstantiateContractResponse =
-//         Message::parse_from_bytes(data.as_slice()).map_err(|_| {
-//             StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
-//         })?;
+    let data = msg.result.unwrap().data.unwrap();
+    let res: MsgInstantiateContractResponse =
+        Message::parse_from_bytes(data.as_slice()).map_err(|_| {
+            StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
+        })?;
 
-//     basket.lp_token_address =
-//         addr_validate_to_lower(deps.api, res.get_contract_address())?;
+    basket.lp_token_address =
+        addr_validate_to_lower(deps.api, res.get_contract_address())?;
 
-//     CONFIG.save(deps.storage, &basket)?;
+    BASKET.save(deps.storage, &basket)?;
 
-//     Ok(Response::new().add_attribute("liquidity_token_addr", basket.lp_token_address))
-// }
+    Ok(Response::new().add_attribute("liquidity_token_addr", basket.lp_token_address))
+}
 
 pub fn withdraw_liquidity(
     deps: DepsMut,
