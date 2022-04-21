@@ -1,0 +1,10 @@
+cd ~/LocalTerra
+docker-compose up > locallog.txt 2>&1 &
+LOCALTERRAJOBID=$!
+sleep 10
+cd -
+cargo wasm
+cargo schema
+cargo build
+terrain deploy basket --signer validator
+kill $LOCALTERRAJOBID
