@@ -225,7 +225,7 @@ impl Basket {
 		match aum_result {
 			Ok(res) => Ok(Asset {
 				info: info,
-				amount: (lp_amount * res.aum) / self.total_tokens()
+				amount: lp_amount.multiply_ratio(res.aum, self.total_tokens())
 			}),
 			Err(err) => Err(err)
 		}
