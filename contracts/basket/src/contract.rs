@@ -25,8 +25,8 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INSTANTIATE_BASKET_REPLY_ID: u64 = 1;
 const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
-const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(30);
-const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(30);
+const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
+const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -447,16 +447,11 @@ pub fn swap(
 
     // TODO: check if i32 -> u128 cast is safe (fails appropriately)
     // JEFF TODO: Ensure this number of decimals is appropriate
-    let net_output_asset_out = Uint256::from_uint128(Uint128::from(gross_output_asset_out.price as u128))
-        .checked_mul(Uint256::from_uint128(BASIS_POINTS_PRECISION))
-        .unwrap()
-        .checked_div(
-            max(
-                Uint256::from_uint128(offer_fee_in_basis_points), 
-                Uint256::from_uint128(ask_fee_in_basis_points)
-            )
-        )
-        .unwrap();
+    let net_output_asset_out = Uint128::from(safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo))
+        .multiply_ratio(
+            BASIS_POINTS_PRECISION - ask_fee_in_basis_points - offer_fee_in_basis_points,
+            BASIS_POINTS_PRECISION
+    );
 
 
     // Compute the tax for the receiving asset (if it is a native one)
