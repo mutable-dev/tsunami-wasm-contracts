@@ -228,7 +228,7 @@ fn slightly_improves_basket_add() {
         Uint128::new(100),
         true
     );
-    assert_eq!(Uint128::new(10024), fees);
+    assert_eq!(Uint128::new(24), fees);
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn strongly_improves_basket_add() {
         Uint128::new(100),
         true
     );
-    assert_eq!(Uint128::new(10001), fees);
+    assert_eq!(Uint128::new(01), fees);
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn strongly_harms_basket_add() {
         Uint128::new(10000),
         true
     );
-    assert_eq!(Uint128::new(10060), fees);
+    assert_eq!(Uint128::new(60), fees);
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn lightly_harms_basket_add() {
         Uint128::new(50),
         true
     );
-    assert_eq!(Uint128::new(10031), fees);
+    assert_eq!(Uint128::new(31), fees);
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn slightly_improves_basket_remove() {
             Uint128::new(10),
             false
         );
-        assert_eq!(Uint128::new(10027), fees);
+        assert_eq!(Uint128::new(27), fees);
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn strongly_improves_basket_remove() {
         Uint128::new(100),
         false
     );
-    assert_eq!(Uint128::new(10000), fees);
+    assert_eq!(Uint128::new(00), fees);
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn strongly_harms_basket_remove() {
         Uint128::new(5),
         false
     );
-    assert_eq!(Uint128::new(10059), fees);
+    assert_eq!(Uint128::new(59), fees);
 }
 
 #[test]
@@ -346,7 +346,7 @@ fn lightly_harms_basket_remove() {
         Uint128::new(50),
         false
     );
-    assert_eq!(Uint128::new(10031), fees);
+    assert_eq!(Uint128::new(31), fees);
 }
 
 #[test]
@@ -363,7 +363,7 @@ fn neutral_basket_remove() {
         Uint128::new(100),
         false
     );
-    assert_eq!(Uint128::new(10030), fees);
+    assert_eq!(Uint128::new(30), fees);
 }
 
 #[test]
@@ -380,7 +380,7 @@ fn neutral_basket_add() {
         Uint128::new(100),
         true
     );
-    assert_eq!(Uint128::new(10030), fees);
+    assert_eq!(Uint128::new(30), fees);
 }
 
 #[test]

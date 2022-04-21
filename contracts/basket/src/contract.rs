@@ -25,8 +25,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INSTANTIATE_BASKET_REPLY_ID: u64 = 1;
 const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
-const FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(10_030);
-const FEE_RAW: Uint128 = Uint128::new(30);
+const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(30);
 const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(30);
 
 
@@ -102,7 +101,7 @@ pub fn withdraw_liquidity(
     info: MessageInfo,
     sender: Addr,
     amount: Uint128,
-    basket_asset: BasketAsset,
+    ask_asset: BasketAsset,
 ) -> Result<Response, ContractError> {
     
     // Load Basket
@@ -113,29 +112,35 @@ pub fn withdraw_liquidity(
         return Err(ContractError::Unauthorized);
     }
 
-    // TODO: encode which asset to withdraw in msg (may not be possible. may need some reworking)
-    // For now, just send back luna always 
-    let asset_info: AssetInfo = basket_asset.info;
+    // Retrieve ask pool
+    let pools = basket.get_pools();
+    let ask_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(pool, _price)| ask_asset.info.equal(&pool.info)) {
+            Some((pool, price)) => (pool.clone(), price.clone()),
+            None => return Err(ContractError::AssetNotInBasket)
+    };
 
-    // Mock Pyth prices
-    // TODO: update to actual pyth oracle price feeds
-    let price = PriceFeed::new(
-        PriceIdentifier::new([0; 32]),
-        PriceStatus::default(),
-        0,
-        6,
-        5,
-        10_000_000,
-        PriceIdentifier::new([0; 32]),
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
+
+    // Calculate gross asset return
+    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
+    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
+    let ask_asset_aum = basket.calculate_aum(&price_feeds, &ask_asset.info);
+    let mut refund_asset = basket.withdraw_amount(amount, &price_feeds, ask_asset.info.clone())?;
+
+    // Calculate fee_bps
+    let fee_bps = calculate_fee_basis_points(
+        basket.calculate_aum(&price_feeds, &refund_asset.info)?.aum,
+        basket.assets.iter().find(|asset| asset.info == ask_asset.info).unwrap(),
+        basket.total_weights, 
+        // TODO: This is "price". What goes here? putting ask_asset price for now
+        Uint128::from(safe_i64_to_u128(ask_pool.1.price)?),
+        ask_pool.1.expo.try_into().unwrap(),
+        refund_asset.amount, 
+        false
     );
-    let refund_asset = basket.withdraw_amount(amount, &[price], asset_info)?; // get_share_in_assets(&pools, amount, total_share);
+
+    // Update refund_asset
+    refund_asset.amount = refund_asset.amount.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
 
     // Update the pool info
     let messages: Vec<CosmosMsg> = vec![
@@ -415,7 +420,7 @@ pub fn swap(
     let gross_output_asset_out: Price = Price::price_basket(&[(ask_offer, safe_u128_to_i64(offer_asset.amount.u128())?, todo_decimals)], todo_decimals).unwrap();
 
     // Compute offer fee 
-    // TODO: check if i32 -> u32 cast is safe (fails appropriately)
+    // TODO: redo exponent stuff here
     let offer_aum = basket.calculate_aum(&price_feeds, &offer_asset.info)?;
     let offer_fee_in_basis_points: Uint128 = calculate_fee_basis_points(
         offer_aum.aum,
@@ -428,7 +433,7 @@ pub fn swap(
     );
 
     // Compute ask fee
-    // TODO: check if i32 -> u32 cast is safe (fails appropriately) (same with i32 -> u128)
+    // TODO: redo exponent stuff here
     let ask_aum = basket.calculate_aum(&price_feeds, &ask_asset)?;
     let ask_fee_in_basis_points = calculate_fee_basis_points(
         ask_aum.aum, 
@@ -436,8 +441,8 @@ pub fn swap(
         basket.total_weights, 
         Uint128::new(ask_aum.price as u128),
         ask_aum.exponent as u32,
-        Uint128::try_from(gross_output_asset_out.price as u128).unwrap(), 
-        true
+        safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo),
+        false
     );
 
     // TODO: check if i32 -> u128 cast is safe (fails appropriately)
@@ -464,6 +469,7 @@ pub fn swap(
         vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
 
 
+    // 
     Ok(Response::new()
         .add_messages(
             // 1. send collateral tokens from the contract to a user
@@ -484,27 +490,29 @@ pub fn swap(
 }
 
 // cases to consider
-// 1. initialAmount is far from targetAmount, action increases balance slightly => high rebate
-// 2. initialAmount is far from targetAmount, action increases balance largely => high rebate
-// 3. initialAmount is close to targetAmount, action increases balance slightly => low rebate
-// 4. initialAmount is far from targetAmount, action reduces balance slightly => high tax
-// 5. initialAmount is far from targetAmount, action reduces balance largely => high tax
-// 6. initialAmount is close to targetAmount, action reduces balance largely => low tax
-// 7. initialAmount is above targetAmount, nextAmount is below targetAmount and vice versa
-// 8. a large swap should have similar fees as the same trade split into multiple smaller swaps
-/// CHECK: types here are bad, and conversions too many, need to consolidate
+// 1. initialAmount is far from targetAmount, action increases balance slightly => high rebate.
+// 2. initialAmount is far from targetAmount, action increases balance largely => high rebate.
+// 3. initialAmount is close to targetAmount, action increases balance slightly => low rebate.
+// 4. initialAmount is far from targetAmount, action reduces balance slightly => high tax.
+// 5. initialAmount is far from targetAmount, action reduces balance largely => high tax.
+// 6. initialAmount is close to targetAmount, action reduces balance largely => low tax.
+// 7. initialAmount is above targetAmount, nextAmount is below targetAmount and vice versa.
+// 8. a large swap should have similar fees as the same trade split into multiple smaller swaps.
+/// CHECK: types here are bad, and conversions too many, need to consolidate.
 /// CHECK: that we are doing the correct math when calculating
-/// fees that should be charged 
-/// CHECK: that we are calculating available assets correctly
+/// fees that should be charged .
+/// CHECK: that we are calculating available assets correctly.
 /// CHECK: that we should calculate the current reserves to compare against target reserves using 
-/// only the available asset, relies on how AUM is calculated
+/// only the available asset, relies on how AUM is calculated.
+/// 
+/// This returns.
 pub fn calculate_fee_basis_points(
 	aum: Uint128,
 	basket_asset: &BasketAsset, 
 	total_weight: Uint128, 
 	price: Uint128,
 	exponent: u32,
-	new_amount: Uint128,
+	offer_or_ask_amount: Uint128,
 	increment: bool
 ) -> Uint128 {
 	let current_reserves = basket_asset.pool_reserves;
@@ -514,7 +522,7 @@ pub fn calculate_fee_basis_points(
 		checked_div(Uint128::new(10).pow(exponent))
 		.unwrap();
 
-	let diff_usd_value = new_amount.
+	let diff_usd_value = offer_or_ask_amount.
 		checked_mul(price).
 		unwrap().
 		checked_div(Uint128::new(10).pow(exponent))
@@ -533,7 +541,7 @@ pub fn calculate_fee_basis_points(
 		unwrap();
 
 	if target_lp_usd_value == Uint128::new(0) {
-		return FEE_IN_BASIS_POINTS;
+		return BASE_FEE_IN_BASIS_POINTS;
 	}
 
 	let initial_usd_from_target = if initial_reserve_usd_value > target_lp_usd_value { 
@@ -546,20 +554,18 @@ pub fn calculate_fee_basis_points(
 
 	// action improves target balance
 	if next_usd_from_target < initial_usd_from_target {
-		let rebate_bps = (FEE_IN_BASIS_POINTS ).
-			checked_sub(BASIS_POINTS_PRECISION ).
-			unwrap().
-			checked_mul(initial_usd_from_target).
-			unwrap().
-			checked_div(target_lp_usd_value ).
-			unwrap();
-		return if rebate_bps >= FEE_RAW  {
-			BASIS_POINTS_PRECISION 
+		let rebate_bps = BASE_FEE_IN_BASIS_POINTS
+			.checked_mul(initial_usd_from_target)
+			.unwrap()
+			.checked_div(target_lp_usd_value )
+			.unwrap();
+		return if rebate_bps >= BASE_FEE_IN_BASIS_POINTS  {
+			Uint128::zero() 
 		} else { 
-			FEE_IN_BASIS_POINTS - rebate_bps
+			BASE_FEE_IN_BASIS_POINTS - rebate_bps
 		};
 	} else if next_usd_from_target == initial_usd_from_target {
-		return FEE_IN_BASIS_POINTS
+		return BASE_FEE_IN_BASIS_POINTS
 	}
 
 	let mut average_diff = (initial_usd_from_target + next_usd_from_target)/Uint128::new(2);
@@ -569,7 +575,7 @@ pub fn calculate_fee_basis_points(
 
     // TODO: perhaps do safer U256 mul + div -> U128?
 	let penalty = PENALTY_IN_BASIS_POINTS * average_diff / target_lp_usd_value ;
-	return FEE_IN_BASIS_POINTS + penalty
+	return BASE_FEE_IN_BASIS_POINTS + penalty
 }
 
 
@@ -771,4 +777,29 @@ fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
     } else {
         return Err(ContractError::FailedCast)
     }
+}
+
+
+
+fn safe_i64_expo_to_u128(
+    amount: i64,
+    expo: i32,
+) -> Uint128 {
+
+    // Positive price
+    assert!(amount >= 0, "amount must be non-negative");
+    let amount: u128 = amount as u128;
+
+    if expo >= 0 {
+
+        // Deal with non-negative exponent
+        let expo = expo as u32;
+        Uint128::from(amount).multiply_ratio(10_u32.pow(expo), 1_u32)
+    } else {
+
+        // Deal with negative exponent
+        let expo = expo.abs() as u32;
+        Uint128::from(amount).multiply_ratio(1_u32, 10_u32.pow(expo))
+    }
+
 }
