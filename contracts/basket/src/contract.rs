@@ -71,6 +71,7 @@ pub fn execute(
         ExecuteMsg::DepositLiquidity {assets, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
         ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
         ExecuteMsg::Swap { sender, offer_asset, belief_price, max_spread, to, ask_asset } => swap(deps, env, info, sender, offer_asset, belief_price, max_spread, to, ask_asset),
+        ExecuteMsg::IncreasePosition { asset, amount } => increase_position(deps, env, info, asset, amount),
     }
 }
 
@@ -94,6 +95,67 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     BASKET.save(deps.storage, &basket)?;
 
     Ok(Response::new().add_attribute("liquidity_token_addr", basket.lp_token_address))
+}
+
+// will receive 
+// context from https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L563
+pub fn increase_position(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    asset: Asset,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    // validate that the position is healthy and can be increased
+    // update funding rates on the asset
+    // get the composite key of the user + asset id + direction
+    // get the position of the user from deps.storage
+    // get the price of the asset they want to open a position on from the price oracle
+    // if they already have a position
+        //   recompute the average price
+    // else 
+        // take the oracle price as the average price
+    // calculates a new margin fee in usd
+        // a 10bps fee to open the new position
+        // funding rate fee comparing the initial and current funding rates
+    // convert the usd value to the asset the position is denominated in
+    // calculate the new amount of collateral
+    // check that the total collateral is more than the current fee
+    // add new amount of collateral to the positions collateral
+    // add new fees on position to the fee_reserve of that asset in the basket
+    // subtract the new fees from the collateral
+    // update the new funding rate on the position
+    // update the time on the position with the current time
+    // update the size of the position with the new amount of leverage being added to the position
+    // validate new position is healthy
+    // increase occupied assets by the amount of new leverage
+    // increase global net liabilities by the fee + position size delta
+    // decrease global net liabilities by the collateral delta
+    // increase amount in the pool_reserves of the collateral token by the collateral delta
+    // decrease the pool_reserves by the amount of the newly applied margin fee
+
+    let basket: Basket = BASKET.load(deps.storage)?;
+
+    let asset_info = get_asset_info(&basket, &asset)?;
+
+    let amount_in_basis_points = amount.checked_mul(BASIS_POINTS_PRECISION).ok_or(
+        ContractError::InvalidAmount,
+    )?;
+
+    let new_position = asset_info.position.checked_add(amount_in_basis_points).ok_or(
+        ContractError::InvalidAmount,
+    )?;
+
+    let new_asset_info = BasketAsset::new(asset, new_position);
+
+    let mut assets = basket.assets.clone();
+    assets.push(new_asset_info);
+
+    let new_basket = Basket::new(assets, &basket.params);
+
+    BASKET.save(deps.storage, &new_basket)?;
+
+    Ok(Response::new())
 }
 
 pub fn withdraw_liquidity(
