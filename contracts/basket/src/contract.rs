@@ -617,13 +617,13 @@ pub fn provide_liquidity(
     // Retrieve each asset pool, and order the deposit assets in the same order as the pools
     let mut basket: Basket = BASKET.load(deps.storage)?;
     let mut pools: Vec<Asset> = basket.get_pools();
-    let deposits: Vec<Uint128> = {
+    let deposits: Vec<Asset> = {
         let mut v = vec![];
         for pool in &pools {
             v.push(assets
                 .iter()
                 .find(|a| a.info.equal(&pool.info))
-                .map(|a| a.amount)
+                .map(|a| a.clone())
                 .expect("Wrong asset info is given"));
         }
         v
@@ -638,14 +638,14 @@ pub fn provide_liquidity(
                 msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
                     owner: info.sender.to_string(),
                     recipient: env.contract.address.to_string(),
-                    amount: deposits[i],
+                    amount: deposits[i].amount,
                 })?,
                 funds: vec![],
             }));
         } else {
             // If the asset is native token, the pool balance is already increased
             // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            pool.amount = pool.amount.checked_sub(deposits[i])?;
+            pool.amount = pool.amount.checked_sub(deposits[i].amount)?;
         }
     }
 
@@ -657,15 +657,24 @@ pub fn provide_liquidity(
     let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
     // Calculate value of user deposits
-    let mut v: Vec<(Price, i64, i32)> = vec![];
+    let mut individual_amounts: Vec<(Price, i64, i32)> = vec![];
     let amounts: &[(Price, i64, i32)] = {
         for i in 0..deposits.len() {
-            v.push((prices[i], safe_u128_to_i64(deposits[i].u128())?, prices[i].expo));
+            individual_amounts.push((prices[i], safe_u128_to_i64(deposits[i].amount.u128())?, prices[i].expo));
         }
-        v.as_slice()
+        individual_amounts.as_slice()
     };
-    let result_expo = -6; // TODO: ensure this is what we want. I think thi smeans we price the basket down to 1e-6 USD
-    let user_deposit_value: Uint128 = Uint128::new(safe_i64_to_u128(Price::price_basket(amounts, result_expo).expect("Couldn't compute user deposit value").price)?);
+    let result_expo = -9; // TODO: ensure this is what we want. I think this means we price the basket down to 1e-9 USD
+    let user_deposit_values: Vec<Uint128> = {
+        let mut v = vec![];
+        for amount in &individual_amounts {
+            v.push(
+                Uint128::new(safe_i64_to_u128(Price::price_basket(&[*amount], result_expo).expect("Couldn't compute user deposit value").price)?)
+            );
+        }
+        v
+    };
+    let total_user_deposit_value: Uint128 = Uint128::new(safe_i64_to_u128(Price::price_basket(amounts, result_expo).expect("Couldn't compute user deposit value").price)?);
 
 
     // Calculate aum
@@ -676,11 +685,11 @@ pub fn provide_liquidity(
     let total_share: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
 
     
-    // Calculate share pre-fees
+    // Calculate share
     let share: Uint128 = if total_share.is_zero() {
 
         // Handle deposit into empty basket at 1:1 USD mint. First deposit gets zero fees
-        user_deposit_value
+        total_user_deposit_value
 
     } else {
 
@@ -692,12 +701,24 @@ pub fn provide_liquidity(
 
         // exchange rate is (lp supply) / (aum)
         // here we value * rate = value * lp supply / aum, safely
-        user_deposit_value.multiply_ratio(total_share, aum_result.aum)
+        // then, we reduce fees by doing gross * ( 10000 - deposit_fee ) / 10000
+        let pre_fee = total_user_deposit_value.multiply_ratio(total_share, aum_result.aum);
+        let fee_bps: Uint128 = Uint128::zero();
+        // {
+        //     for deposit in &deposits {
+        //         let deposit_value
+        //     }
+        // };
+        
+        let post_fee = pre_fee.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
+        post_fee
     };
 
     // TODO: I think this is where we subtract fees from share. I may be wrong.
     // Also I think first depositor is charged no fee if we do it here because they just get minted less but they own 100% of lp token.
     // Maybe we take difference and mint it to some fee wallet?
+
+
 
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
