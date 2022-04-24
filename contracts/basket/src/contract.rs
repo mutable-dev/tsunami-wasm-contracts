@@ -511,16 +511,18 @@ pub fn calculate_fee_basis_points(
 	increment: bool
 ) -> Uint128 {
 	let current_reserves = basket_asset.pool_reserves;
-	let initial_reserve_usd_value = (current_reserves).
-		checked_mul(price).
-		unwrap().
-		checked_div(Uint128::new(10).pow(exponent))
+	let initial_reserve_usd_value = (current_reserves)
+        .checked_mul(price)
+		.unwrap()
+        // TODO test for this exponent
+		.checked_div(Uint128::new(10).pow(exponent))
 		.unwrap();
 
-	let diff_usd_value = offer_or_ask_amount.
-		checked_mul(price).
-		unwrap().
-		checked_div(Uint128::new(10).pow(exponent))
+	let diff_usd_value = offer_or_ask_amount
+		.checked_mul(price)
+		.unwrap()
+        // TODO test for this exponent
+		.checked_div(Uint128::new(10).pow(exponent))
 		.unwrap();
 
 	let next_reserve_usd_value = if increment { 
@@ -529,11 +531,11 @@ pub fn calculate_fee_basis_points(
 		max(initial_reserve_usd_value - diff_usd_value, Uint128::new(0))
 	};
 	
-	let target_lp_usd_value = basket_asset.token_weight.
-		checked_mul(aum).
-		unwrap().
-		checked_div(total_weight).
-		unwrap();
+	let target_lp_usd_value = basket_asset.token_weight
+		.checked_mul(aum)
+		.unwrap()
+		.checked_div(total_weight)
+		.unwrap();
 
 	if target_lp_usd_value == Uint128::new(0) {
 		return BASE_FEE_IN_BASIS_POINTS;
