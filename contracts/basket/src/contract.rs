@@ -242,7 +242,6 @@ fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError
 /// ## Queries
 /// * **QueryMsg::Basket {}** Returns information about the basket in an object of type [`Basket`].
 #[cfg_attr(not(feature = "library"), entry_point)]
-#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Basket {} => to_binary(&query_basket(deps)?),
