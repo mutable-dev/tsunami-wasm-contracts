@@ -20,6 +20,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "basket"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-bignumber",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cosmwasm-storage",
+ "cw-storage-plus",
+ "cw2",
+ "cw20",
+ "phf",
+ "protobuf",
+ "pyth-sdk-terra",
+ "schemars",
+ "serde",
+ "terra-cosmwasm",
+ "thiserror",
+]
+
+[[package]]
 name = "bigint"
 version = "4.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -176,26 +196,6 @@ checksum = "c243d26ba6c49abb5ed69762648a9c664ba263debce425ad10603e7b8aa92ced"
 dependencies = [
  "cosmwasm-std",
  "serde",
-]
-
-[[package]]
-name = "basket"
-version = "0.1.0"
-dependencies = [
- "cosmwasm-bignumber",
- "cosmwasm-schema",
- "cosmwasm-std",
- "cosmwasm-storage",
- "cw-storage-plus",
- "cw2",
- "cw20",
- "phf",
- "protobuf",
- "pyth-sdk-terra",
- "schemars",
- "serde",
- "terra-cosmwasm",
- "thiserror",
 ]
 
 [[package]]

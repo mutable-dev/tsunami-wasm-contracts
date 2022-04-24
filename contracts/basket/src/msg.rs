@@ -46,6 +46,14 @@ pub enum ExecuteMsg {
         receiver: Option<String>,
     },
     Receive { msg: Cw20ReceiveMsg },
+    Swap {
+        sender: Addr,
+        offer_asset: Asset,
+        belief_price: Option<Decimal>,
+        max_spread: Option<Decimal>,
+        to: Option<Addr>,
+        ask_asset: AssetInfo,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

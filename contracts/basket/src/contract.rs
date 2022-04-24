@@ -70,6 +70,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::DepositLiquidity {assets, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
         ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::Swap { sender, offer_asset, belief_price, max_spread, to, ask_asset } => swap(deps, env, info, sender, offer_asset, belief_price, max_spread, to, ask_asset),
     }
 }
 
