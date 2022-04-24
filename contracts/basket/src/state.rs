@@ -219,7 +219,7 @@ impl Basket {
 		Uint128::from(1_u32)
 	}
 
-	/// TODO: Calculates amount to withdraw. Reduce fees elsewhere
+	/// Calculates amount to withdraw. Reduce fees elsewhere
 	pub fn withdraw_amount(&self, lp_amount: Uint128, prices: &[PriceFeed], info: AssetInfo, ) -> Result<Asset, ContractError> {
 		let aum_result = self.calculate_aum(prices, &info);
 		match aum_result {
