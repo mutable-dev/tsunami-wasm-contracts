@@ -2,7 +2,7 @@ use crate::{
     error::ContractError,
     msg::*,
     asset::{AssetInfo, Asset, addr_validate_to_lower},
-    state::{Basket, BasketAsset, BASKET},
+    state::{Basket, BasketAsset, BASKET, POSITIONS, Position},
     querier::{query_supply, query_token_precision},
 };
 use cosmwasm_std::{
@@ -25,6 +25,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INSTANTIATE_BASKET_REPLY_ID: u64 = 1;
 const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
+const FUNDING_RATE_PRECISION: Uint128 = Uint128::new(1_000_000);
 const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 
@@ -71,7 +72,7 @@ pub fn execute(
         ExecuteMsg::DepositLiquidity {assets, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
         ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
         ExecuteMsg::Swap { sender, offer_asset, belief_price, max_spread, to, ask_asset } => swap(deps, env, info, sender, offer_asset, belief_price, max_spread, to, ask_asset),
-        ExecuteMsg::IncreasePosition { asset, amount } => increase_position(deps, env, info, asset, amount),
+        ExecuteMsg::IncreasePosition { asset, amount, leverage_amount, is_long } => increase_position(deps, env, info, asset, amount, leverage_amount, is_long),
     }
 }
 
@@ -104,58 +105,144 @@ pub fn increase_position(
     env: Env,
     info: MessageInfo,
     asset: Asset,
-    amount: Uint128,
+    collateral_amount: Uint128,
+    leverage_amount: Uint128,
+    is_long: bool,
 ) -> Result<Response, ContractError> {
+    // Ensure native token was sent
+    asset.assert_sent_native_token_balance(&info)?;
     // validate that the position is healthy and can be increased
+    // load the basket
+    let basket: Basket = BASKET.load(deps.storage)?;
     // update funding rates on the asset
+    update_funding_rate()?;
     // get the composite key of the user + asset id + direction
+    let asset_key: String;
+    match asset.info {
+        AssetInfo::Token{contract_addr} => { asset_key = contract_addr.to_string(); },
+        AssetInfo::NativeToken{denom} => { asset_key = denom; },
+    }
+
+    // iterate through the assets in the basket and get the asset whose key matches the asset key
+    let basket_asset: &BasketAsset = basket.assets.iter().find(|basket_asset| basket_asset.info == asset.info)
+        .ok_or(ContractError::AssetNotInBasket)?;
+    
     // get the position of the user from deps.storage
+    let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
+    let mut position: Position = Position::new(info.sender, asset.info);
+    match position_option {
+        Some(p) => { position = p; },
+        None => {},
+    }
+
     // get the price of the asset they want to open a position on from the price oracle
+    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
+
+    let aum_result = basket.calculate_aum(&price_feeds, &asset.info)?;
+
     // if they already have a position
         //   recompute the average price
     // else 
         // take the oracle price as the average price
+    let price_u128: Uint128 = Uint128::new(aum_result.price as u128);
+    let average_price: Uint128 = price_u128;
+    if !position_option.is_none() {
+        //get existing size and existing price + new delta size * new price / 2
+        let existing_size: Uint128 = position.size;
+        let size_delta = leverage_amount;
+        average_price = ((existing_size * position.average_price) + (size_delta * average_price)) / Uint128::new(2);
+    }
+
     // calculates a new margin fee in usd
-        // a 10bps fee to open the new position
+        // a 10 basis points fee to open the new position
         // funding rate fee comparing the initial and current funding rates
-    // convert the usd value to the asset the position is denominated in
+    // get the USD value of the asset * the price of the asset and multiply by 10 basis points
+    let new_position_usd_value = asset_amount_to_usd(leverage_amount, price_u128, aum_result.exponent)?;
+    let position_fee = new_position_usd_value.checked_mul(Uint128::new(10)).unwrap().checked_div(BASIS_POINTS_PRECISION).unwrap();
+    let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
+    let funding_rate_fee = get_funding_fee(basket_asset.cumulative_funding_rate, existing_funding_rate, position.size);
+
+    // NOT NEEDED: convert the usd value to the asset the position is denominated in
     // calculate the new amount of collateral
+    let new_collateral = asset.amount;
     // check that the total collateral is more than the current fee
+    assert_eq!(new_collateral.checked_add(position_fee).unwrap(), true);
     // add new amount of collateral to the positions collateral
+    position.collateral_amount = position.collateral_amount.checked_add(new_collateral).unwrap();
     // add new fees on position to the fee_reserve of that asset in the basket
+    basket_asset.fee_reserves = basket_asset.fee_reserves.checked_add(position_fee).unwrap();
     // subtract the new fees from the collateral
+    position.collateral_amount = position.collateral_amount.checked_sub(position_fee).unwrap();
     // update the new funding rate on the position
+    position.entry_funding_rate = basket_asset.cumulative_funding_rate;
     // update the time on the position with the current time
+    position.last_increased_time = env.block.time;
     // update the size of the position with the new amount of leverage being added to the position
+    position.size = position.size.checked_add(leverage_amount).unwrap();
     // validate new position is healthy
+    position.validate_health(aum_result.price, aum_result.exponent);
     // increase occupied assets by the amount of new leverage
+    basket_asset.occupied_reserves = basket_asset.occupied_reserves.checked_add(leverage_amount).unwrap();
     // increase global net liabilities by the fee + position size delta
     // decrease global net liabilities by the collateral delta
+    basket_asset.net_protocol_liabilities = basket_asset.net_protocol_liabilities
+        .checked_add(position_fee).unwrap()
+        .checked_add(leverage_amount).unwrap()
+        .checked_sub(collateral_amount).unwrap();
     // increase amount in the pool_reserves of the collateral token by the collateral delta
     // decrease the pool_reserves by the amount of the newly applied margin fee
-
-    let basket: Basket = BASKET.load(deps.storage)?;
-
-    let asset_info = get_asset_info(&basket, &asset)?;
-
-    let amount_in_basis_points = amount.checked_mul(BASIS_POINTS_PRECISION).ok_or(
-        ContractError::InvalidAmount,
-    )?;
-
-    let new_position = asset_info.position.checked_add(amount_in_basis_points).ok_or(
-        ContractError::InvalidAmount,
-    )?;
-
-    let new_asset_info = BasketAsset::new(asset, new_position);
-
-    let mut assets = basket.assets.clone();
-    assets.push(new_asset_info);
-
-    let new_basket = Basket::new(assets, &basket.params);
-
-    BASKET.save(deps.storage, &new_basket)?;
-
+    basket_asset.pool_reserves = basket_asset.pool_reserves
+        .checked_add(collateral_amount).unwrap()
+        .checked_sub(position.collateral_amount).unwrap();
+    // increase fee_reserves by the fee
+    basket_asset.fee_reserves = basket_asset.pool_reserves.checked_add(position_fee).unwrap();
     Ok(Response::new())
+}
+
+// updates the funding rate on a basket asset by comparing the current time to the last time the funding rate was updated
+// TODO: Implement this
+fn update_funding_rate() -> Result<(), ContractError> {
+    // get the current time
+    // get the last time the funding rate was updated
+    // if the current time is greater than the last time the funding rate was updated + the time interval
+        // update the funding rate
+    // else
+        // do nothing
+    Ok(())
+}
+
+// TODO: Change decimal precision to go to 1000th place on USD
+fn asset_amount_to_usd(
+    amount: Uint128,
+    price: Uint128,
+    exponent: i32
+) -> Result<Uint128, ContractError> {
+    let gross_value = amount.checked_mul(price).unwrap();
+    if exponent > 1 {
+        Ok(
+            gross_value.checked_div(Uint128::new(10).pow(exponent as u32)).
+            unwrap()
+        )
+    } else {
+        Ok(
+            gross_value.checked_mul(Uint128::new(10).pow(exponent as u32)).
+            unwrap()
+        )
+    }
+
+}
+
+fn get_funding_fee(
+    cumulative_funding_rate: Uint128,
+    entry_funding_rate: Uint128,
+    size: Uint128,
+) -> Result<Uint128, ContractError> {
+    if size == Uint128::new(0) {
+        Ok(Uint128::new(0))
+    } else {
+        let funding_rate_fee = cumulative_funding_rate.checked_sub(entry_funding_rate).unwrap();
+        Ok(funding_rate_fee.checked_mul(size).unwrap().checked_div(FUNDING_RATE_PRECISION).unwrap())    
+    }
 }
 
 pub fn withdraw_liquidity(

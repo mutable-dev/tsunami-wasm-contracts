@@ -1,9 +1,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256};
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256, Timestamp};
 use std::convert::{TryFrom, TryInto};
-use cw_storage_plus::{Item, Map};
+use cw_storage_plus::{Item, Map, PrimaryKey};
 use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
@@ -321,7 +321,60 @@ pub struct Oracle {
 	pub valid: bool,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, JsonSchema)]
+pub struct Position {
+	pub owner: Addr,
+	/// The address of the collateral that was use to open the position 
+	pub collateral_mint: AssetInfo,
+	/// The size of the position in the tokens decimals
+	pub size: Uint128,
+	/// The average price paid to open
+	/// This value is normalized with PRICE_DECIMALS and is ALWAYS in USD
+	pub average_price: Uint128,
+	/// how much of the delivery asset is reserved
+	/// In the delivery asset's Mint decimals 
+	pub reserve_amount: Uint128,
+	/// Entry number that is compared to ever increasing number cumulative 
+	pub entry_funding_rate: Uint128,
+	/// Funding rates to determine the owed funding fees
+	pub realised_pnl: Uint128, 
+	/// Only used when reducing collateral
+	pub in_profit: bool,
+	/// Keeps track of the the last time fees were calculated for the position
+	pub last_increased_time: Timestamp,
+	/// The amount of collateral on a position
+	pub collateral_amount: Uint128,
+}
+
+impl Position {
+	pub fn new(
+		owner: Addr, 
+		collateral_mint: AssetInfo
+	)	-> Self {
+		Position {
+			owner,
+			collateral_mint,
+			size: Uint128::new(0),
+			average_price: Uint128::new(0),
+			reserve_amount: Uint128::new(0),
+			entry_funding_rate: Uint128::new(0),
+			realised_pnl: Uint128::new(0),
+			in_profit: false,
+			last_increased_time: Timestamp::from_nanos(0),
+			collateral_amount: Uint128::new(0),
+		}
+	}
+
+	// TODO: Implement this where it takes in a price of an asset
+	// and determines whether or not the position needs to be liquidated
+	pub fn validate_health(&self, price: i64, exponent: i32 ) -> bool {
+		true
+	}
+}
+
 pub const BASKET: Item<Basket> = Item::new("basket");
+
+pub const POSITIONS: Map<(&[u8], &[u8], String), Position> = Map::new("positions");
 
 pub struct TickerData {
 	testnet_address: &'static str,
