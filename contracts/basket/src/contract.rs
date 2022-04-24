@@ -70,6 +70,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::DepositLiquidity {assets, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
         ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::Swap { sender, offer_asset, belief_price, max_spread, to, ask_asset } => swap(deps, env, info, sender, offer_asset, belief_price, max_spread, to, ask_asset),
     }
 }
 
@@ -240,7 +241,6 @@ fn check_assets(assets: &Vec<InstantiateAssetInfo>) -> Result<u64, ContractError
 ///
 /// ## Queries
 /// * **QueryMsg::Basket {}** Returns information about the basket in an object of type [`Basket`].
-#[cfg_attr(not(feature = "library"), entry_point)]
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -446,7 +446,7 @@ pub fn swap(
     );
 
     // TODO: check if i32 -> u128 cast is safe (fails appropriately)
-    // JEFF TODO: Ensure this number of decimals is appropriate
+    // TODO: Ensure this number of decimals is appropriate
     let net_output_asset_out = Uint128::from(safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo))
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_in_basis_points - offer_fee_in_basis_points,

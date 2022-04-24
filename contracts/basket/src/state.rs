@@ -324,10 +324,10 @@ pub struct Oracle {
 pub const BASKET: Item<Basket> = Item::new("basket");
 
 pub struct TickerData {
-	testnet_address: &'static str,
-	mainnet_address: &'static str,
-	testnet_price_feed: &'static str,
-	mainnet_price_feed: &'static str,
+	pub testnet_address: &'static str,
+	pub mainnet_address: &'static str,
+	pub testnet_price_feed: &'static str,
+	pub mainnet_price_feed: &'static str,
 }
 
 pub static ASSET_MAP: phf::Map<&'static str,  TickerData> = phf_map! {
