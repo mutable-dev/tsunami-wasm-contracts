@@ -228,7 +228,7 @@ fn slightly_improves_basket_add() {
         Uint128::new(100),
         true
     );
-    assert_eq!(Uint128::new(24), fees);
+    assert_eq!(Uint128::new(12), fees);
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn strongly_harms_basket_add() {
         Uint128::new(10000),
         true
     );
-    assert_eq!(Uint128::new(60), fees);
+    assert_eq!(Uint128::new(30), fees);
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn lightly_harms_basket_add() {
         Uint128::new(50),
         true
     );
-    assert_eq!(Uint128::new(31), fees);
+    assert_eq!(Uint128::new(15), fees);
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn slightly_improves_basket_remove() {
             Uint128::new(10),
             false
         );
-        assert_eq!(Uint128::new(27), fees);
+        assert_eq!(Uint128::new(14), fees);
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn strongly_harms_basket_remove() {
         Uint128::new(5),
         false
     );
-    assert_eq!(Uint128::new(59), fees);
+    assert_eq!(Uint128::new(29), fees);
 }
 
 #[test]
@@ -346,7 +346,7 @@ fn lightly_harms_basket_remove() {
         Uint128::new(50),
         false
     );
-    assert_eq!(Uint128::new(31), fees);
+    assert_eq!(Uint128::new(15), fees);
 }
 
 #[test]
@@ -363,7 +363,7 @@ fn neutral_basket_remove() {
         Uint128::new(100),
         false
     );
-    assert_eq!(Uint128::new(30), fees);
+    assert_eq!(Uint128::new(15), fees);
 }
 
 #[test]
@@ -380,7 +380,7 @@ fn neutral_basket_add() {
         Uint128::new(100),
         true
     );
-    assert_eq!(Uint128::new(30), fees);
+    assert_eq!(Uint128::new(15), fees);
 }
 
 #[test]
