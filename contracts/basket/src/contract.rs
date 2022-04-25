@@ -515,31 +515,31 @@ pub fn swap(
 /// 
 /// This returns.
 pub fn calculate_fee_basis_points(
-	aum_price: Price,
+	aum_value_price: Price,
     basket: &Basket,
-	(basket_asset, reserve_price): (&BasketAsset, Price),
-	offer_or_ask_price: Price,
+	(basket_asset, reserve_value_price): (&BasketAsset, Price),
+	offer_or_ask_value_price: Price,
 	action: Action
 ) -> Uint128 {
 
     // Get current aum in USD, in units of USD_VALUE_PRECISION
-    let aum_value: Uint128 = safe_price_to_Uint128(aum_price);
+    let aum_value: Uint128 = safe_price_to_Uint128(aum_value_price);
 
     // Get current value of token reserve in USD, in units of USD_VALUE_PRECISION
 	// let current_reserves: Uint128 = basket_asset.pool_reserves;
-	let initial_reserve_usd_value: Uint128 = safe_price_to_Uint128(reserve_price);
+	let initial_reserve_usd_value: Uint128 = safe_price_to_Uint128(reserve_value_price);
 
     // Get value of offer or ask in USD, in units of USD_VALUE_PRECISION
-	let diff_usd_value: Uint128 = safe_price_to_Uint128(offer_or_ask_price);
+	let diff_usd_value: Uint128 = safe_price_to_Uint128(offer_or_ask_value_price);
 
     // Compute updated reserve value by adding or subtracting diff_usd_value based on action
     let next_reserve_usd_value: Uint128 = match action {
-        Offer => initial_reserve_usd_value + diff_usd_value,
-        Ask => initial_reserve_usd_value.saturating_sub(diff_usd_value)
+        Action::Offer => initial_reserve_usd_value + diff_usd_value,
+        Action::Ask => initial_reserve_usd_value.saturating_sub(diff_usd_value)
     };
 	
     // Compute target value based on weight, so that we may compare to the updated value
-	let target_lp_usd_value: Uint128 = safe_price_to_Uint128(aum_price)
+	let target_lp_usd_value: Uint128 = aum_value
         .multiply_ratio(basket_asset.token_weight, basket.get_total_weights());
 
     // First depositor should not be hit with a fee
