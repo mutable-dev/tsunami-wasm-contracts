@@ -1,7 +1,7 @@
 use crate::contract::{ 
     instantiate,
     query_basket,
-    calculate_fee_basis_points,
+    calculate_fee_basis_points, execute,
  };
 use crate::mock_querier::mock_dependencies;
 use crate::{
@@ -15,7 +15,7 @@ use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
     to_binary,  Addr,
     ReplyOn, SubMsg, Uint128,
-    WasmMsg,
+    WasmMsg, coins,
 };
 use cw20::{ MinterResponse};
 
@@ -140,6 +140,21 @@ fn proper_initialization() {
 #[test]
 fn exploration() {
     assert_eq!(2 + 2, 4);
+}
+
+/// Create a default instantiate asset info struct so we can fill in fields we're not interested in
+fn create_instantiate_asset_info() -> InstantiateAssetInfo {
+    InstantiateAssetInfo{
+        info: AssetInfo::NativeToken{ denom: "default".to_string() },
+        address: Addr::unchecked("default_addr"),
+        weight: Uint128::new(1),
+        min_profit_basis_points: Uint128::new(1),
+        max_asset_amount: Uint128::new(100),
+        is_asset_stable: true,
+        is_asset_shortable: true,
+        oracle_address: Addr::unchecked("oracle"),
+        backup_oracle_address: Addr::unchecked("backup_oracle"),
+    }
 }
 
 fn create_basket() -> Basket {
@@ -421,3 +436,75 @@ fn test_calculate_aum_two_assets() {
     assert_eq!(5, aum_result.exponent);
     assert_eq!(1_000_000, aum_result.price);
 }
+
+/// Test the contract interface for LP deposits
+
+/// Instantiate an LP with one asset and make an initial deposit with one asset
+/// Check that the deposited amount ends up in the Basket struct
+#[test]
+fn single_asset_deposit() {
+    let mut deps = mock_dependencies(&[]);
+
+    deps.querier.with_token_balances(&[(
+        &String::from("asset0000"),
+        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::new(123u128))],
+    )]);
+
+    // luna and ust info
+    let luna_info = AssetInfo::NativeToken{ denom: "luna".to_string() };
+    let ust_info = AssetInfo::NativeToken{ denom: "ust".to_string() };
+
+    let mut assets = Vec::new();
+    assets.push(InstantiateAssetInfo {
+        info: luna_info.clone(),
+        address: Addr::unchecked("luna_addr"),
+        ..create_instantiate_asset_info()
+    });
+    assets.push(InstantiateAssetInfo {
+        info: ust_info.clone(),
+        address: Addr::unchecked("ust_addr"),
+        ..create_instantiate_asset_info()
+    });
+
+    let msg = InstantiateMsg {
+        assets: assets,
+        name: "blue chip basket".to_string(),
+        tax_basis_points: Uint128::new(1),
+        stable_tax_basis_points: Uint128::new(1),
+        mint_burn_basis_points: Uint128::new(1),
+        swap_fee_basis_points: Uint128::new(1),
+        stable_swap_fee_basis_points: Uint128::new(1), 
+        margin_fee_basis_points: Uint128::new(1), 
+        liquidation_fee_usd: Uint128::new(1),
+        min_profit_time: Uint128::new(1),
+        total_weights: Uint128::new(1),
+        admin: Addr::unchecked("name"),
+        token_code_id: 10u64,
+    };
+
+    let sender = "addr0000";
+    let info = mock_info(sender, &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    println!("{}", basket.assets[0].pool_reserves);
+
+    let depositor = mock_info("first_depositor", &coins(10, "luna"));
+    let deposit_assets = vec![
+        Asset { info: luna_info.clone(), amount: Uint128::new(10) },
+    ];
+    let deposit_msg = ExecuteMsg::DepositLiquidity { 
+        assets: deposit_assets,
+        slippage_tolerance: None, 
+        receiver: None
+    };
+
+    let _deposit_res = execute(deps.as_mut(), mock_env(), depositor, deposit_msg).unwrap();
+    //println!("{:?}", deposit_res);
+
+    // Assert that the deposited tokens end up in the possession of the contract address
+    // Assert that this deposited amount matches with the data stored in the basket (the first deposit should be feeless)
+
+    // Assert that the depositor receives LP tokens in return
+}
+
