@@ -614,41 +614,41 @@ pub fn provide_liquidity(
         asset.assert_sent_native_token_balance(&info)?;
     }
 
-    // Retrieve each asset pool, and order the deposit assets in the same order as the pools
     let mut basket: Basket = BASKET.load(deps.storage)?;
-    let mut pools: Vec<Asset> = basket.get_pools();
+    
+    // Retrieve each asset pool, and order the deposit assets in the same order as the pools
     let deposits: Vec<Asset> = {
         let mut v = vec![];
-        for pool in &pools {
+        for basket_asset in &basket.assets {
             v.push(assets
                 .iter()
-                .find(|a| a.info.equal(&pool.info))
+                .find(|a| a.info.equal(&basket_asset.info))
                 .map(|a| a.clone())
                 .unwrap_or(Asset { 
-                    info: pool.info.clone(), 
+                    info: basket_asset.info.clone(), 
                     amount: Uint128::new(0) 
                 }));
         }
         v
     };
-       
+
     let mut messages: Vec<CosmosMsg> = vec![];
-    for (i, pool) in pools.iter_mut().enumerate() {
-        // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
-        if let AssetInfo::Token { contract_addr, .. } = &pool.info {
-            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: contract_addr.to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
-                    owner: info.sender.to_string(),
-                    recipient: env.contract.address.to_string(),
-                    amount: deposits[i].amount,
-                })?,
-                funds: vec![],
-            }));
-        } else {
-            // If the asset is native token, the pool balance is already increased
-            // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            pool.amount = pool.amount.checked_sub(deposits[i].amount)?;
+
+    // Generate the messages to transfer deposited nonnative assets to the contract address
+    for (i, basket_asset) in basket.assets.iter_mut().enumerate() {
+        match &basket_asset.info {
+            AssetInfo::Token { contract_addr } => {
+                messages.push(CosmosMsg::Wasm(WasmMsg::Execute { 
+                    contract_addr: contract_addr.to_string(), 
+                    msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
+                        owner: info.sender.to_string(),
+                        recipient: env.contract.address.to_string(),
+                        amount: deposits[i].amount,
+                    })?,
+                    funds: vec![],
+                }));
+            },
+            _ => {},
         }
     }
 
