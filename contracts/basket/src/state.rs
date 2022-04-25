@@ -63,7 +63,7 @@ pub struct BasketAsset {
 	/// Last time the funding rate was updated
 	pub last_funding_time: Uint128,
 	/// Account with price oracle data on the asset
-	pub oracle_address: Addr,
+	pub oracle: OracleInterface,
 	/// Backup account with price oracle data on the asset
 	pub backup_oracle_address: Addr,
 	/// Global size of shorts denominated in kind
@@ -245,6 +245,11 @@ impl Basket {
 
 	/// TODO: Get actual oracle price feeds
 	pub fn get_price_feeds(&self, querier: &QuerierWrapper) -> Result<Vec<PriceFeed>, ContractError> {
+		let mut v = vec![];
+		for asset in &self.assets {
+			v.push(asset.oracle.get_price_feed(querier)?);
+		}
+		return Ok(v);
 
 		if cfg!(feature = "test")
 		{
@@ -306,11 +311,24 @@ impl Basket {
 		};
 		Ok(price_feeds
 			.iter()
-			.map(|&x| x.get_current_price().unwrap())
+			.map(|&x| x.get_current_price().unwrap()) // FIXME: It's bad, please don't do unwrap
 			.collect())
 	}
 }
 
+pub enum OracleInterface {
+	Pyth(Addr, PriceIdentifier),
+	Stub(PriceFeed)
+}
+
+impl OracleInterface {
+	pub fn get_price_feed(&self, querier: &QuerierWrapper) -> Result<PriceFeed, ContractError> {
+		match &self {
+			Pyth(addr, price_id) => query_price_feed(querier, asset.oracle_address.to_string(), dummy_identifier), // map err
+			Stub(price_feed) => price_feed,
+		}
+	}
+}
 
 /// Represents whitelisted assets on the dex
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
