@@ -524,3 +524,25 @@ fn single_asset_deposit() {
     assert_eq!(true, depositor_balance_lp_token.amount > Uint128::new(0)); // TODO figure what the exact amount should be and check it
 }
 
+#[test]
+fn multi_asset_deposit() {
+    todo!();
+}
+
+// Check that fees are subtracted from the LP tokens given to a deposit that is not the very first one
+// For later: check that the correct amount of fees are taken
+#[test]
+fn non_initial_deposit_pays_fees() {
+    todo!();
+}
+
+#[test]
+fn try_deposit_exceeding_limit() {
+    todo!();
+}
+
+// Check that depositing an asset the basket wasn't initialized with fails
+#[test]
+fn try_deposit_unwhitelisted_asset() {
+    todo!();
+}
