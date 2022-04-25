@@ -64,8 +64,6 @@ fn proper_initialization() {
         liquidation_fee_usd: Uint128::new(1),
         /// prevents gaming of oracle with hourly trades
         min_profit_time: Uint128::new(1),
-        /// cache the total weights of the assets	
-        total_weights: Uint128::new(1),
         /// account that can make changes to the exchange
         admin: Addr::unchecked("name"),
         /// The token contract code ID used for the tokens in the pool
@@ -131,7 +129,6 @@ fn proper_initialization() {
     assert_eq!(basket.margin_fee_basis_points, Uint128::new(1));
     assert_eq!(basket.liquidation_fee_usd, Uint128::new(1));
     assert_eq!(basket.min_profit_time, Uint128::new(1));
-    assert_eq!(basket.total_weights, Uint128::new(1));
     assert_eq!(basket.admin, Addr::unchecked("name"));
 }
 
@@ -170,7 +167,6 @@ fn create_basket() -> Basket {
             margin_fee_basis_points: Uint128::new(1),
             liquidation_fee_usd: Uint128::new(1),
             min_profit_time: Uint128::new(1),
-            total_weights: Uint128::new(1),
             admin: Addr::unchecked("name"),
             token_code_id: 10u64,
         },

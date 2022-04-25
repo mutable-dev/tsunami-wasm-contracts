@@ -47,3 +47,55 @@ fn test_pyth_usd() {
     );
 
 }
+
+#[test]
+fn test_invert_price() {
+
+    use pyth_sdk_terra::*;
+    const USD_VALUE_PRECISION: i32 = -3;
+
+
+    // Mock PriceFeed
+    let price: i64 = 10_i64.pow(-USD_VALUE_PRECISION as u32 + 1); // $10/token
+    let price_feed: PriceFeed = PriceFeed::new(
+        PriceIdentifier::new([0; 32]),
+        PriceStatus::Trading,
+        0,
+        USD_VALUE_PRECISION,
+        5,
+        10_000_000,
+        PriceIdentifier::new([0; 32]),
+        price,
+        (price/10) as u64,
+        0,
+        0,
+        0,
+        0,
+        0
+    );
+    let pyth_price: Price = price_feed.get_current_price().unwrap();
+
+    println!("The pyth_price for the tokens is ({} +/- {}) x 10^{} token/USD", pyth_price.price, pyth_price.conf, pyth_price.expo);
+
+    let unit_price: PriceFeed = PriceFeed::new(
+        PriceIdentifier::new([0; 32]),
+        PriceStatus::Trading,
+        0,
+        USD_VALUE_PRECISION,
+        5,
+        10_000_000,
+        PriceIdentifier::new([0; 32]),
+        10_i64.pow(-USD_VALUE_PRECISION as u32),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+    );
+    let inverted_price: Price = unit_price.get_current_price().unwrap().div(&pyth_price).unwrap();
+
+    println!("The inverted pyth_price for the tokens is ({} +/- {}) x 10^{} token/USD", inverted_price.price, inverted_price.conf, inverted_price.expo);
+
+}
+
