@@ -318,13 +318,20 @@ impl Basket {
 
 pub enum OracleInterface {
 	Pyth(Addr, PriceIdentifier),
-	Stub(PriceFeed)
+	Stub(Price)
 }
 
 impl OracleInterface {
-	pub fn get_price_feed(&self, querier: &QuerierWrapper) -> Result<PriceFeed, ContractError> {
+	pub fn get_price(&self, querier: &QuerierWrapper) -> Result<Price, ContractError> {
 		match &self {
-			Pyth(addr, price_id) => query_price_feed(querier, asset.oracle_address.to_string(), dummy_identifier), // map err
+			Pyth(addr, price_id) => {
+				let price_feed = query_price_feed(querier, asset.oracle_address.to_string(), dummy_identifier)?;
+				let maybe_price = price_feed.get_current_price();
+				match maybe_price {
+					Some(price) => price,
+					None => ContractError::///
+				}
+			},
 			Stub(price_feed) => price_feed,
 		}
 	}
