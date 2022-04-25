@@ -624,7 +624,10 @@ pub fn provide_liquidity(
                 .iter()
                 .find(|a| a.info.equal(&pool.info))
                 .map(|a| a.clone())
-                .expect("Wrong asset info is given"));
+                .unwrap_or(Asset { 
+                    info: pool.info.clone(), 
+                    amount: Uint128::new(0) 
+                }));
         }
         v
     };
