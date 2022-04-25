@@ -11,11 +11,13 @@ use crate::{
 };
 
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
-use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR};
+use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR, MockApi, MockQuerier};
 use cosmwasm_std::{
-    to_binary,  Addr,
+    to_binary,  Addr, BankQuery,
     ReplyOn, SubMsg, Uint128,
-    WasmMsg, coins,
+    WasmMsg, coins, Api, QueryRequest, 
+    from_binary, BalanceResponse, Deps, 
+    OwnedDeps, MemoryStorage,
 };
 use cw20::{ MinterResponse};
 
@@ -133,13 +135,6 @@ fn proper_initialization() {
     assert_eq!(basket.min_profit_time, Uint128::new(1));
     assert_eq!(basket.total_weights, Uint128::new(1));
     assert_eq!(basket.admin, Addr::unchecked("name"));
-}
-
-
-
-#[test]
-fn exploration() {
-    assert_eq!(2 + 2, 4);
 }
 
 /// Create a default instantiate asset info struct so we can fill in fields we're not interested in
@@ -437,18 +432,17 @@ fn test_calculate_aum_two_assets() {
     assert_eq!(1_000_000, aum_result.price);
 }
 
-/// Test the contract interface for LP deposits
+/// Test the contract interface for native asset deposits to the LP
 
 /// Instantiate an LP with one asset and make an initial deposit with one asset
-/// Check that the deposited amount ends up in the Basket struct
 #[test]
 fn single_asset_deposit() {
-    let mut deps = mock_dependencies(&[]);
-
-    deps.querier.with_token_balances(&[(
-        &String::from("asset0000"),
-        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::new(123u128))],
-    )]);
+    //let mut deps = mock_dependencies(&[]);
+    let mut deps = cosmwasm_std::testing::mock_dependencies(&[]);
+    // deps.querier.with_token_balances(&[(
+    //     &String::from("asset0000"),
+    //     &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::new(123u128))],
+    // )]);
 
     // luna and ust info
     let luna_info = AssetInfo::NativeToken{ denom: "luna".to_string() };
@@ -500,11 +494,33 @@ fn single_asset_deposit() {
     };
 
     let _deposit_res = execute(deps.as_mut(), mock_env(), depositor, deposit_msg).unwrap();
-    //println!("{:?}", deposit_res);
 
     // Assert that the deposited tokens end up in the possession of the contract address
-    // Assert that this deposited amount matches with the data stored in the basket (the first deposit should be feeless)
+    let response: BalanceResponse = from_binary(&deps.querier.handle_query(&QueryRequest::Bank(
+        BankQuery::Balance {
+            address: MOCK_CONTRACT_ADDR.to_string(),
+            denom: "luna".to_string()
+        })
+    ).unwrap().unwrap()).unwrap();
 
+    let contract_balance_luna = response.amount;
+    assert_eq!("luna", contract_balance_luna.denom);
+    assert_eq!(Uint128::new(10), contract_balance_luna.amount);
+
+    // Assert that this deposited amount matches with the data stored in the basket (the first deposit should be feeless)
+    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].pool_reserves);
+    
     // Assert that the depositor receives LP tokens in return
+    let lp_token_addr = query_basket(deps.as_ref()).unwrap().lp_token_address;
+    let response: BalanceResponse = from_binary(&deps.querier.handle_query(&QueryRequest::Bank(
+        BankQuery::Balance {
+            address: "first_depositor".to_string(),
+            denom: lp_token_addr.to_string()
+        })
+    ).unwrap().unwrap()).unwrap();
+
+    let depositor_balance_lp_token = response.amount;
+    assert_eq!(lp_token_addr, depositor_balance_lp_token.denom);
+    assert_eq!(true, depositor_balance_lp_token.amount > Uint128::new(0)); // TODO figure what the exact amount should be and check it
 }
 
