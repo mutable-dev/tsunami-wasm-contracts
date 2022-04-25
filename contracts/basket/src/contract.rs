@@ -723,6 +723,12 @@ pub fn provide_liquidity(
 
 
 
+    
+    // Update the pool_reserves field in each BasketAsset to reflect the amounts deposited to the contract account)
+    for (i, basket_asset) in basket.assets.iter_mut().enumerate() {
+        basket_asset.pool_reserves += deposits[i].amount;
+    }
+
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
     messages.extend(mint_liquidity_token_message(
