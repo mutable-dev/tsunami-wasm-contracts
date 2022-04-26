@@ -2,6 +2,7 @@ use crate::contract::{
     instantiate,
     query_basket,
     calculate_fee_basis_points,
+    safe_price_to_Uint128,
     Action,
  };
 use crate::mock_querier::mock_dependencies;
@@ -9,7 +10,6 @@ use crate::{
     msg::*,
     state::{Basket, BasketAsset},
     asset::{Asset, AssetInfo},
-    contract::{Action, safe_price_to_Uint128},
 };
 
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
