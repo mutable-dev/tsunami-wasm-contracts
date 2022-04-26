@@ -553,8 +553,7 @@ pub fn calculate_fee_basis_points(
     let improvement = new_distance <= initial_distance;
 
 	if improvement {
-        println!("asdfasdf");
-        return BASE_FEE_IN_BASIS_POINTS.multiply_ratio(new_distance, initial_distance);
+        return BASE_FEE_IN_BASIS_POINTS.multiply_ratio(target_lp_usd_value.saturating_sub(initial_distance), target_lp_usd_value);
 	} else {
         return BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(new_distance, target_lp_usd_value).min(PENALTY_IN_BASIS_POINTS);
     }
