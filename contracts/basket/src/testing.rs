@@ -2,6 +2,7 @@ use crate::contract::{
     instantiate,
     query_basket,
     calculate_fee_basis_points,
+    Action,
  };
 use crate::mock_querier::mock_dependencies;
 use crate::{
@@ -215,205 +216,323 @@ pub fn create_price_feed(price: i64, exponent: i32) -> PriceFeed {
 #[test]
 fn slightly_improves_basket_add() {
     let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(100),
-        true
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 485_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Offer
     );
-    assert_eq!(Uint128::new(12), fees);
+    assert_eq!(Uint128::new(14), fees);
 }
 
 #[test]
-fn strongly_improves_basket_add() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(4);
-
+fn strongly_improves_basket_add_small() {
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(1_000_000),
-        4,
-        Uint128::new(100),
-        true
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Offer
     );
-    assert_eq!(Uint128::new(01), fees);
+    assert_eq!(Uint128::new(1), fees);
+}
+
+fn strongly_improves_basket_add_big() {
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
+    let fees = calculate_fee_basis_points(
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 450_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Offer
+    );
+    assert_eq!(Uint128::new(1), fees);
 }
 
 #[test]
-fn strongly_harms_basket_add() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(500);
-
+fn strongly_harms_basket_add_small() {
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(1_000_000),
-        4,
-        Uint128::new(10000),
-        true
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 955_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Offer
     );
     assert_eq!(Uint128::new(30), fees);
 }
 
 #[test]
 fn lightly_harms_basket_add() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(500);
-
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(50),
-        true
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 500_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Offer
     );
-    assert_eq!(Uint128::new(15), fees);
+    assert_eq!(Uint128::new(16), fees);
 }
 
 #[test]
-fn slightly_improves_basket_remove() {
-        let basket_asset = &mut create_basket_asset();
-        basket_asset.pool_reserves = Uint128::new(550);
-        let fees = calculate_fee_basis_points(
-            Uint128::new(100_000),
-            &basket_asset,
-            Uint128::new(10),
-            Uint128::new(100_0000),
-            4,
-            Uint128::new(10),
-            false
-        );
-        assert_eq!(Uint128::new(14), fees);
+fn slightly_improves_basket_remove_small() {
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
+    let fees = calculate_fee_basis_points(
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 520_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 1_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Ask
+    );
+    assert_eq!(Uint128::new(14), fees);
 }
 
 #[test]
 fn strongly_improves_basket_remove() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(1000);
-
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(100),
-        false
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 990_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 1_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Ask
     );
-    assert_eq!(Uint128::new(00), fees);
+    assert_eq!(Uint128::new(1), fees);
 }
 
 #[test]
-fn strongly_harms_basket_remove() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(10);
-
+fn strongly_harms_basket_remove_small() {
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(5),
-        false
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 5_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 1_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Ask
     );
-    assert_eq!(Uint128::new(29), fees);
+    assert_eq!(Uint128::new(30), fees);
 }
 
 #[test]
 fn lightly_harms_basket_remove() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(500);
-
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(50),
-        false
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 450_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 1_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Ask
     );
-    assert_eq!(Uint128::new(15), fees);
+    assert_eq!(Uint128::new(16), fees);
 }
 
 #[test]
 fn neutral_basket_remove() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(550);
-
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(100),
-        false
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 520_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 40_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Ask
     );
     assert_eq!(Uint128::new(15), fees);
 }
 
 #[test]
 fn neutral_basket_add() {
-    let basket_asset = &mut create_basket_asset();
-    basket_asset.pool_reserves = Uint128::new(450);
-
+    let basket_asset = create_basket_asset();
+    let basket = create_basket();
     let fees = calculate_fee_basis_points(
-        Uint128::new(100_000),
-        &basket_asset,
-        Uint128::new(10),
-        Uint128::new(100_0000),
-        4,
-        Uint128::new(100),
-        true
+        Price{
+            price: 1_000_000_000,
+            expo: -6,
+            conf: 10
+        },
+        &basket,
+        (&basket_asset, Price {
+            price: 480_000_000,
+            expo: -6,
+            conf: 10
+        }),
+        Price{
+            price: 40_000_000,
+            expo: -6,
+            conf: 10
+        },
+        Action::Ask
     );
     assert_eq!(Uint128::new(15), fees);
 }
 
-#[test]
-fn test_calculate_aum_one_asset() {
-    let mut basket = create_basket();
-    let basket_asset = create_basket_asset();
-    basket.assets[0].pool_reserves = Uint128::new(450);
+// #[test]
+// fn test_calculate_aum_one_asset() {
+//     let mut basket = create_basket();
+//     let basket_asset = create_basket_asset();
+//     basket.assets[0].pool_reserves = Uint128::new(450);
 
-    let mut price_feeds = Vec::new();
-    price_feeds.push(create_price_feed(10_000_000, 6));
-    let aum_result  = basket.calculate_aum(
-        &price_feeds,
-        &basket_asset.info
-    ).unwrap();
-    assert_eq!(Uint128::new(4500), aum_result.aum);
-    assert_eq!(6, aum_result.exponent);
-    assert_eq!(10_000_000, aum_result.price);
-}
+//     let mut price_feeds = Vec::new();
+//     price_feeds.push(create_price_feed(10_000_000, 6));
+//     let aum_result  = basket.calculate_aum(
+//         &price_feeds,
+//         &basket_asset.info
+//     ).unwrap();
+//     assert_eq!(Uint128::new(4500), aum_result.aum);
+//     assert_eq!(6, aum_result.exponent);
+//     assert_eq!(10_000_000, aum_result.price);
+// }
 
-#[test]
-fn test_calculate_aum_two_assets() {
-    let mut basket = create_basket();
-    let basket_asset = create_basket_asset();
-    let basket_asset_copy = create_basket_asset();
-    basket.assets[0].pool_reserves = Uint128::new(450);
-    basket.assets[0].info = AssetInfo::NativeToken{denom: "ste".to_string()};
-    basket.assets.push(basket_asset);
-    basket.assets[1].pool_reserves = Uint128::new(10);
+// #[test]
+// fn test_calculate_aum_two_assets() {
+//     let mut basket = create_basket();
+//     let basket_asset = create_basket_asset();
+//     let basket_asset_copy = create_basket_asset();
+//     basket.assets[0].pool_reserves = Uint128::new(450);
+//     basket.assets[0].info = AssetInfo::NativeToken{denom: "ste".to_string()};
+//     basket.assets.push(basket_asset);
+//     basket.assets[1].pool_reserves = Uint128::new(10);
 
-    let mut price_feeds = Vec::new();
-    price_feeds.push(create_price_feed(10_000_000, 6));
-    price_feeds.push(create_price_feed(1_000_000, 5));
-    let aum_result  = basket.calculate_aum(
-        &price_feeds,
-        &basket_asset_copy.info
-    ).unwrap();
-    assert_eq!(Uint128::new(4600), aum_result.aum);
-    assert_eq!(5, aum_result.exponent);
-    assert_eq!(1_000_000, aum_result.price);
-}
+//     let mut price_feeds = Vec::new();
+//     price_feeds.push(create_price_feed(10_000_000, 6));
+//     price_feeds.push(create_price_feed(1_000_000, 5));
+//     let aum_result  = basket.calculate_aum(
+//         &price_feeds,
+//         &basket_asset_copy.info
+//     ).unwrap();
+//     assert_eq!(Uint128::new(4600), aum_result.aum);
+//     assert_eq!(5, aum_result.exponent);
+//     assert_eq!(1_000_000, aum_result.price);
+// }
