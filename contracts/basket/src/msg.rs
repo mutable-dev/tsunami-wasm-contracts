@@ -39,7 +39,7 @@ pub struct InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     DepositLiquidity {
-        asset: Asset,
+        assets: Vec<Asset>,
         slippage_tolerance: Option<Decimal>,
         receiver: Option<String>,
     },
