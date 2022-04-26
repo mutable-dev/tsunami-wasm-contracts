@@ -5,6 +5,7 @@ use crate::contract::{
     Action,
  };
 use crate::mock_querier::mock_dependencies;
+use crate::state::OracleInterface;
 use crate::{
     msg::*,
     state::{Basket, BasketAsset},
@@ -42,8 +43,8 @@ fn proper_initialization() {
         max_asset_amount: Uint128::new(1),
         is_asset_stable: true,
         is_asset_shortable: true,
-        oracle_address: Addr::unchecked("oracle"),
-        backup_oracle_address: Addr::unchecked("backup_oracle"),
+        oracle: OracleInterface::from_dummy(100, 0),
+        backup_oracle: OracleInterface::from_dummy(100, 0),
     });
     let msg = InstantiateMsg {
         assets: assets,
@@ -112,8 +113,8 @@ fn proper_initialization() {
         max_asset_amount: Uint128::new(1),
         stable_token: true,
         shortable_token: true,
-        oracle_address: Addr::unchecked("oracle"),
-        backup_oracle_address: Addr::unchecked("backup_oracle"),
+        oracle: OracleInterface::from_dummy(100, 0),
+        backup_oracle: OracleInterface::from_dummy(100, 0),
         cumulative_funding_rate: Uint128::new(0),
         global_short_size: Uint128::new(0),
         net_protocol_liabilities: Uint128::new(0),
@@ -156,8 +157,8 @@ fn create_basket() -> Basket {
                     max_asset_amount: Uint128::new(1),
                     is_asset_stable: true,
                     is_asset_shortable: true,
-                    oracle_address: Addr::unchecked("oracle"),
-                    backup_oracle_address: Addr::unchecked("backup_oracle"),
+                    oracle: OracleInterface::from_dummy(100, 0),
+                    backup_oracle: OracleInterface::from_dummy(100, 0),
                 }
             ),
             name: "blue chip basket".to_string(),
@@ -185,8 +186,8 @@ fn create_basket_asset() -> BasketAsset {
         shortable_token: false,
         cumulative_funding_rate:  Uint128::new(0),
         last_funding_time:  Uint128::new(0),
-        oracle_address: Addr::unchecked("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"),
-        backup_oracle_address: Addr::unchecked("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"),
+        oracle: OracleInterface::from_dummy(100, 0),
+        backup_oracle: OracleInterface::from_dummy(100, 0),
         global_short_size:  Uint128::new(0),
         net_protocol_liabilities:  Uint128::new(0),
         occupied_reserves:  Uint128::new(0),
