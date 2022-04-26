@@ -7,10 +7,11 @@ use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
+use crate::contract::{safe_price_to_Uint128, safe_u128_to_i64, USD_VALUE_PRECISION, safe_i64_to_u128};
+use crate::querier::{query_supply, query_token_precision};
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus, query_price_feed};
 use std::cfg;
 use phf::{phf_map};
-
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -35,8 +36,6 @@ pub struct Basket {
 	pub liquidation_fee_usd: Uint128,
 	/// prevents gaming of oracle with hourly trades
 	pub min_profit_time: Uint128,
-	/// cache the total weights of the assets	
-	pub total_weights: Uint128,
 	/// account that can make changes to the exchange
 	pub admin: Addr,
 	/// LP token address
@@ -152,19 +151,26 @@ impl Basket {
 			margin_fee_basis_points: msg.margin_fee_basis_points,
 			liquidation_fee_usd: msg.liquidation_fee_usd,
 			min_profit_time: msg.min_profit_time,
-			total_weights: msg.total_weights,
 			admin: msg.admin.clone(),
 			lp_token_address: Addr::unchecked(""), // This is fixed in reply
 		}
+	}
+
+	pub fn get_total_weights(&self) -> Uint128 {
+		let mut total_weights = Uint128::zero();
+		for asset in &self.assets{
+			total_weights += asset.token_weight;
+		}
+		total_weights
 	}
 
 	// CHECK: that we should take the value of the token account as AUM and not the general reserves from the
 	// available asset account
 	pub fn calculate_aum(
 		&self,
-		prices: &[PriceFeed], 
+		querier: &QuerierWrapper,
 		reserve_basket_asset_info: &AssetInfo,
-	) -> Result<AumResult, ContractError> {
+	) -> Result<Price, ContractError> {
 		let mut aum = Uint128::new(0);
 		let mut precise_price = 0;
 		let mut exponent =  1;
@@ -177,40 +183,18 @@ impl Basket {
 				}
 		}
 
-		for (i, pyth_price) in prices.iter().enumerate() {
-			current_basket_asset = &self.assets[i];
+		// Build amounts: input to price_basket
+		let tokens: Vec<(Asset, Price)> = self.get_pools().iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
+		let amounts: &[(Price, i64, i32)] = &tokens
+			.iter()
+			.map(|(asset, price)| (*price, safe_u128_to_i64(asset.amount.u128()).unwrap(), -(query_token_precision(querier, &asset.info).unwrap() as i32)))
+			.collect::<Vec<(Price, i64, i32)>>();
 
-			let price_option = pyth_price.get_current_price();
-					let price: Price;
-					match price_option {
-							Some(price_res) => price = price_res,
-							_ => return Err(ContractError::OracleQueryFailed)
-					};
-
-					// Assumes only native assets for now
-					let current_asset_info: &AssetInfo = &current_basket_asset.info; 
-
-					match current_asset_info {
-							AssetInfo::NativeToken{ denom } => {
-									if denom == &reserve_asset_denom {
-											exponent = price.expo.abs();
-											precise_price = price.price;
-									}
-							},
-							_ =>  ()
-					}
-
-			aum += Uint128::try_from(
-				Uint256::from_uint128(current_basket_asset.pool_reserves)
-				.checked_mul(Uint256::from_uint128(Uint128::new(price.price as u128)))
-				.unwrap()
-				.checked_div(
-					Uint256::from_uint128(Uint128::new(10_u64.pow(price.expo.abs() as u32) as u128))
-				)
-				.unwrap())
-				.unwrap();
-		}
-		Ok(AumResult{ aum, price: precise_price, exponent })
+		// Construct aum Price result
+		Ok(Price::price_basket(
+			amounts, 
+			USD_VALUE_PRECISION,
+		).unwrap())
 	}
 	
 
@@ -219,16 +203,30 @@ impl Basket {
 		Uint128::from(1_u32)
 	}
 
-	/// TODO: Calculates amount to withdraw. Reduce fees elsewhere
-	pub fn withdraw_amount(&self, lp_amount: Uint128, prices: &[PriceFeed], info: AssetInfo, ) -> Result<Asset, ContractError> {
-		let aum_result = self.calculate_aum(prices, &info);
-		match aum_result {
-			Ok(res) => Ok(Asset {
+	/// Calculates usd amount to withdraw. Reduce fees elsewhere
+	pub fn withdraw_amount(&self, lp_amount: Uint128, info: AssetInfo, querier: &QuerierWrapper) -> Result<Asset, ContractError> {
+		
+		// Calculate aum in USD, in units of USD_VALUE_PRECISION
+		let aum_value_price: Price = self.calculate_aum(querier, &info)?;
+
+		// Calculate amount of lp token to mint in USD, in units of USD_VALUE_PRECISION
+		let lp_amount_value: Uint128 = lp_amount.multiply_ratio(safe_price_to_Uint128(aum_value_price), self.total_tokens());
+
+		// Get exchange rate between requested asset <--> usd
+		let asset_usd: Price = self.assets.iter().zip(self.get_prices(querier)?)
+			.find(|(asset, price)| asset.info == info).unwrap().1;
+	
+		// Invert the price to usd <--> requested asset
+		//let unit_price; // unit_price(); // TODO: WIP
+		//let usd_asset;//: Price =  // TODO: WIP
+		let asset_redeem_amount = lp_amount_value; // TODO: WIP
+
+		Ok(
+			Asset {
 				info: info,
-				amount: lp_amount.multiply_ratio(res.aum, self.total_tokens())
-			}),
-			Err(err) => Err(err)
-		}
+				amount: asset_redeem_amount,
+			}
+		)
 	}
 
 	/// TODO: Gathers all `Asset`s in basket.

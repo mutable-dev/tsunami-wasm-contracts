@@ -28,6 +28,9 @@ const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
 const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 
+// Calculate USD value of asset down to this precision
+pub const USD_VALUE_PRECISION: i32 = -6;
+
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -68,7 +71,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::DepositLiquidity {assets, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
+        ExecuteMsg::DepositLiquidity {asset, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, asset, slippage_tolerance, receiver),
         ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
         ExecuteMsg::Swap { sender, offer_asset, belief_price, max_spread, to, ask_asset } => swap(deps, env, info, sender, offer_asset, belief_price, max_spread, to, ask_asset),
     }
@@ -125,20 +128,22 @@ pub fn withdraw_liquidity(
     // Calculate gross asset return
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
     let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
-    let ask_asset_aum = basket.calculate_aum(&price_feeds, &ask_asset.info);
-    let mut refund_asset = basket.withdraw_amount(amount, &price_feeds, ask_asset.info.clone())?;
+    let ask_asset_aum = basket.calculate_aum(&deps.querier, &ask_asset.info);
+    let mut refund_asset = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
 
-    // Calculate fee_bps
-    let fee_bps = calculate_fee_basis_points(
-        basket.calculate_aum(&price_feeds, &refund_asset.info)?.aum,
-        basket.assets.iter().find(|asset| asset.info == ask_asset.info).unwrap(),
-        basket.total_weights, 
-        // TODO: This is "price". What goes here? putting ask_asset price for now
-        Uint128::from(safe_i64_to_u128(ask_pool.1.price)?),
-        ask_pool.1.expo.try_into().unwrap(),
-        refund_asset.amount, 
-        false
-    );
+    // TODO: Calculate fee_bps
+    let token_decimals = query_token_precision(&deps.querier, &refund_asset.info)? as i32;
+    let refund_price: Price = Price::price_basket(&[(ask_pool.1, safe_u128_to_i64(refund_asset.amount.u128())?, token_decimals)], USD_VALUE_PRECISION).expect("unable to price refund asset");
+    let fee_bps = Uint128::zero();//calculate_fee_basis_points(
+    //     basket.calculate_aum(&price_feeds, &refund_asset.info)?.aum,
+    //     basket.assets.iter().find(|asset| asset.info == ask_asset.info).unwrap(),
+    //     basket.total_weights, 
+    //     // TODO: This is "price". What goes here? putting ask_asset price for now
+    //     safe_price_to_Uint128(refund_price),
+    //     ask_pool.1.expo.try_into().unwrap(),
+    //     refund_asset.amount, 
+    //     false
+    // );
 
     // Update refund_asset
     refund_asset.amount = refund_asset.amount.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
@@ -375,22 +380,29 @@ pub fn swap(
     // Ensure native token was sent
     offer_asset.assert_sent_native_token_balance(&info)?;
 
-    // Load basket singleton
+    // Load basket singleton, get pools
     let mut basket: Basket = BASKET.load(deps.storage)?;
+    let mut pools: Vec<Asset> = basket.get_pools();
 
-    // If the asset balance is already increased, we should subtract the user deposit from the pool amount
-    let pools: Vec<Asset> = basket
-        .get_pools()
-        .iter()
-        .map(|p| {
-            let mut p = p.clone();
-            if p.info.equal(&offer_asset.info) {
-                p.amount = p.amount.checked_sub(offer_asset.amount).unwrap();
-            }
-
-            p
-        })
-        .collect();
+    let mut messages: Vec<CosmosMsg> = vec![];
+    for (i, pool) in pools.iter_mut().enumerate() {
+        // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
+        if let AssetInfo::Token { contract_addr, .. } = &pool.info {
+            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: contract_addr.to_string(),
+                msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
+                    owner: info.sender.to_string(),
+                    recipient: env.contract.address.to_string(),
+                    amount: offer_asset.amount,
+                })?,
+                funds: vec![],
+            }));
+        } else {
+            // If the asset is native token, the pool balance is already increased
+            // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
+            pool.amount = pool.amount.checked_sub(offer_asset.amount)?;
+        }
+    }
 
     // Grab relevant asset pools in basket, zipped with price
     let offer_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
@@ -419,35 +431,36 @@ pub fn swap(
     let todo_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
     let gross_output_asset_out: Price = Price::price_basket(&[(ask_offer, safe_u128_to_i64(offer_asset.amount.u128())?, todo_decimals)], todo_decimals).unwrap();
 
-    // Compute offer fee 
-    // TODO: redo exponent stuff here
-    let offer_aum = basket.calculate_aum(&price_feeds, &offer_asset.info)?;
-    let offer_fee_in_basis_points: Uint128 = calculate_fee_basis_points(
-        offer_aum.aum,
-        basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
-        basket.total_weights, 
-        Uint128::new(offer_aum.price as u128),
-        offer_aum.exponent as u32,
-        offer_asset.amount, 
-        true
-    );
+    // TODO: Compute offer fee 
+    let offer_aum = basket.calculate_aum(&deps.querier, &offer_asset.info)?;
+    //let aum_price;
+    let offer_decimals = query_token_precision(&deps.querier, &offer_asset.info)? as i32;
+    let offer_price: Price = Price::price_basket(&[(offer_pool.1, safe_u128_to_i64(offer_asset.amount.u128())?, offer_decimals)], USD_VALUE_PRECISION).expect("couldn't price offer_asset");
+    let offer_fee_in_basis_points: Uint128 = Uint128::zero();//calculate_fee_basis_points(
+    //     offer_aum.aum,
+    //     basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
+    //     basket.total_weights, 
+    //     offer_price,
+    //     offer_asset.amount, 
+    //     true
+    // );
 
     // Compute ask fee
-    // TODO: redo exponent stuff here
-    let ask_aum = basket.calculate_aum(&price_feeds, &ask_asset)?;
-    let ask_fee_in_basis_points = calculate_fee_basis_points(
-        ask_aum.aum, 
-        basket.assets.iter().find(|asset| asset.info == ask_asset).unwrap(),
-        basket.total_weights, 
-        Uint128::new(ask_aum.price as u128),
-        ask_aum.exponent as u32,
-        safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo),
-        false
-    );
+    // Can reuse offer_value as return_value
+    let ask_aum = basket.calculate_aum(&deps.querier, &ask_asset)?;
+    let ask_fee_in_basis_points = Uint128::zero();//calculate_fee_basis_points(
+    //     ask_aum.aum, 
+    //     basket.assets.iter().find(|asset| asset.info == ask_asset).unwrap(),
+    //     basket.total_weights, 
+    //     Uint128::new(ask_aum.price as u128),
+    //     ask_aum.exponent as u32,
+    //     safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo),
+    //     false
+    // );
 
     // TODO: check if i32 -> u128 cast is safe (fails appropriately)
     // TODO: Ensure this number of decimals is appropriate
-    let net_output_asset_out = Uint128::from(safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo))
+    let net_output_asset_out = safe_price_to_Uint128(gross_output_asset_out)
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_in_basis_points - offer_fee_in_basis_points,
             BASIS_POINTS_PRECISION
@@ -502,79 +515,54 @@ pub fn swap(
 /// 
 /// This returns.
 pub fn calculate_fee_basis_points(
-	aum: Uint128,
-	basket_asset: &BasketAsset, 
-	total_weight: Uint128, 
-	price: Uint128,
-	exponent: u32,
-	offer_or_ask_amount: Uint128,
-	increment: bool
+	aum_value_price: Price,
+    basket: &Basket,
+	(basket_asset, reserve_value_price): (&BasketAsset, Price),
+	offer_or_ask_value_price: Price,
+	action: Action
 ) -> Uint128 {
-	let current_reserves = basket_asset.pool_reserves;
-	let initial_reserve_usd_value = (current_reserves)
-        .checked_mul(price)
-		.unwrap()
-        // TODO test for this exponent
-		.checked_div(Uint128::new(10).pow(exponent))
-		.unwrap();
 
-	let diff_usd_value = offer_or_ask_amount
-		.checked_mul(price)
-		.unwrap()
-        // TODO test for this exponent
-		.checked_div(Uint128::new(10).pow(exponent))
-		.unwrap();
+    // Get current aum in USD, in units of USD_VALUE_PRECISION
+    let aum_value: Uint128 = safe_price_to_Uint128(aum_value_price);
 
-	let next_reserve_usd_value = if increment { 
-		initial_reserve_usd_value + diff_usd_value 
-	} else { 
-		max(initial_reserve_usd_value - diff_usd_value, Uint128::new(0))
-	};
+    // Get current value of token reserve in USD, in units of USD_VALUE_PRECISION
+	// let current_reserves: Uint128 = basket_asset.pool_reserves;
+	let initial_reserve_usd_value: Uint128 = safe_price_to_Uint128(reserve_value_price);
+
+    // Get value of offer or ask in USD, in units of USD_VALUE_PRECISION
+	let diff_usd_value: Uint128 = safe_price_to_Uint128(offer_or_ask_value_price);
+
+    // Compute updated reserve value by adding or subtracting diff_usd_value based on action
+    let next_reserve_usd_value: Uint128 = match action {
+        Action::Offer => initial_reserve_usd_value + diff_usd_value,
+        Action::Ask => initial_reserve_usd_value.saturating_sub(diff_usd_value)
+    };
 	
-	let target_lp_usd_value = basket_asset.token_weight
-		.checked_mul(aum)
-		.unwrap()
-		.checked_div(total_weight)
-		.unwrap();
+    // Compute target value based on weight, so that we may compare to the updated value
+	let target_lp_usd_value: Uint128 = aum_value
+        .multiply_ratio(basket_asset.token_weight, basket.get_total_weights());
 
-	if target_lp_usd_value == Uint128::new(0) {
+    // First depositor should not be hit with a fee
+	if aum_value.is_zero() || initial_reserve_usd_value.is_zero(){
 		return BASE_FEE_IN_BASIS_POINTS;
 	}
 
-	let initial_usd_from_target = if initial_reserve_usd_value > target_lp_usd_value { 
-		initial_reserve_usd_value - target_lp_usd_value
-	} else { target_lp_usd_value - initial_reserve_usd_value  };
+    // Calculate the initial and new distance from the target value
+	let initial_distance = target_lp_usd_value.max(initial_reserve_usd_value) - target_lp_usd_value.min(initial_reserve_usd_value);
+	let new_distance = target_lp_usd_value.max(next_reserve_usd_value) - target_lp_usd_value.min(next_reserve_usd_value);
+    let improvement = new_distance <= initial_distance;
 
-	let next_usd_from_target = if next_reserve_usd_value > target_lp_usd_value { 
-		next_reserve_usd_value - target_lp_usd_value
-	} else { target_lp_usd_value - next_reserve_usd_value  };
-
-	// action improves target balance
-	if next_usd_from_target < initial_usd_from_target {
-		let rebate_bps = BASE_FEE_IN_BASIS_POINTS
-			.checked_mul(initial_usd_from_target)
-			.unwrap()
-			.checked_div(target_lp_usd_value )
-			.unwrap();
-		return if rebate_bps >= BASE_FEE_IN_BASIS_POINTS  {
-			Uint128::zero() 
-		} else { 
-			BASE_FEE_IN_BASIS_POINTS - rebate_bps
-		};
-	} else if next_usd_from_target == initial_usd_from_target {
-		return BASE_FEE_IN_BASIS_POINTS
-	}
-
-	let mut average_diff = (initial_usd_from_target + next_usd_from_target)/Uint128::new(2);
-	if average_diff > target_lp_usd_value {
-		average_diff = target_lp_usd_value ;
-	}
-
-    // TODO: perhaps do safer U256 mul + div -> U128?
-	let penalty = PENALTY_IN_BASIS_POINTS * average_diff / target_lp_usd_value ;
-	return BASE_FEE_IN_BASIS_POINTS + penalty
+	if improvement {
+        return BASE_FEE_IN_BASIS_POINTS.multiply_ratio(target_lp_usd_value.saturating_sub(initial_distance), target_lp_usd_value);
+	} else {
+        return BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(new_distance, target_lp_usd_value).min(PENALTY_IN_BASIS_POINTS);
+    }
 }
 
+pub enum Action {
+    Offer,
+    Ask
+}
 
 /// ## Description
 /// Provides liquidity in the pair with the specified input parameters.
@@ -599,36 +587,21 @@ pub fn provide_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    assets: Vec<Asset>,
+    offer_asset: Asset,
     slippage_tolerance: Option<Decimal>,
     receiver: Option<String>,
 ) -> Result<Response, ContractError> {
 
     // Check assets for valid formatting
-    for asset in &assets{
-        asset.info.check(deps.api)?;
-    }
+    offer_asset.info.check(deps.api)?;
 
     // Validate amount of native tokens transferred
-    for asset in assets.iter() {
-        asset.assert_sent_native_token_balance(&info)?;
-    }
+    offer_asset.assert_sent_native_token_balance(&info)?;
 
-    // Retrieve each asset pool, and order the deposit assets in the same order as the pools
+    // Load basket and gather pools
     let mut basket: Basket = BASKET.load(deps.storage)?;
-    let mut pools: Vec<Asset> = basket.get_pools();
-    let deposits: Vec<Asset> = {
-        let mut v = vec![];
-        for pool in &pools {
-            v.push(assets
-                .iter()
-                .find(|a| a.info.equal(&pool.info))
-                .map(|a| a.clone())
-                .expect("Wrong asset info is given"));
-        }
-        v
-    };
-       
+    let mut pools = basket.get_pools();
+
     let mut messages: Vec<CosmosMsg> = vec![];
     for (i, pool) in pools.iter_mut().enumerate() {
         // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
@@ -638,16 +611,23 @@ pub fn provide_liquidity(
                 msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
                     owner: info.sender.to_string(),
                     recipient: env.contract.address.to_string(),
-                    amount: deposits[i].amount,
+                    amount: offer_asset.amount,
                 })?,
                 funds: vec![],
             }));
         } else {
             // If the asset is native token, the pool balance is already increased
             // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            pool.amount = pool.amount.checked_sub(deposits[i].amount)?;
+            pool.amount = pool.amount.checked_sub(offer_asset.amount)?;
         }
     }
+
+    // Grab relevant asset pools in basket, zipped with price
+    let offer_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(pool, _price)| offer_asset.info.equal(&pool.info)) {
+            Some((pool, price)) => (pool.clone(), price.clone()),
+            None => return Err(ContractError::AssetNotInBasket)
+    };
 
 
     // Begin calculating amount of LP token to mint
@@ -656,30 +636,16 @@ pub fn provide_liquidity(
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
     let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
-    // Calculate value of user deposits
-    let mut individual_amounts: Vec<(Price, i64, i32)> = vec![];
-    let amounts: &[(Price, i64, i32)] = {
-        for i in 0..deposits.len() {
-            individual_amounts.push((prices[i], safe_u128_to_i64(deposits[i].amount.u128())?, prices[i].expo));
-        }
-        individual_amounts.as_slice()
-    };
-    let result_expo = -9; // TODO: ensure this is what we want. I think this means we price the basket down to 1e-9 USD
-    let user_deposit_values: Vec<Uint128> = {
-        let mut v = vec![];
-        for amount in &individual_amounts {
-            v.push(
-                Uint128::new(safe_i64_to_u128(Price::price_basket(&[*amount], result_expo).expect("Couldn't compute user deposit value").price)?)
-            );
-        }
-        v
-    };
-    let total_user_deposit_value: Uint128 = Uint128::new(safe_i64_to_u128(Price::price_basket(amounts, result_expo).expect("Couldn't compute user deposit value").price)?);
+    // Calculate value of user deposit
+    let asset_price = offer_pool.1;
+    let token_decimals = query_token_precision(&deps.querier, &offer_asset.info)? as i32;
+    let total_user_deposit_value: Price = Price::price_basket(&[(asset_price, safe_u128_to_i64(offer_asset.amount.u128())?, token_decimals)], USD_VALUE_PRECISION)
+        .expect("unable to price user's deposit");
 
 
     // Calculate aum
     // TODO: ensure reserve_basket_asset_info is the correct one
-    let aum_result = basket.calculate_aum(&price_feeds, &basket.assets[0].info)?;
+    let aum_value_price = basket.calculate_aum(&deps.querier, &basket.assets[0].info)?;
     
     // Retrieve LP token supply
     let total_share: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
@@ -689,7 +655,7 @@ pub fn provide_liquidity(
     let share: Uint128 = if total_share.is_zero() {
 
         // Handle deposit into empty basket at 1:1 USD mint. First deposit gets zero fees
-        total_user_deposit_value
+        safe_price_to_Uint128(total_user_deposit_value)
 
     } else {
 
@@ -702,14 +668,19 @@ pub fn provide_liquidity(
         // exchange rate is (lp supply) / (aum)
         // here we value * rate = value * lp supply / aum, safely
         // then, we reduce fees by doing gross * ( 10000 - deposit_fee ) / 10000
-        let pre_fee = total_user_deposit_value.multiply_ratio(total_share, aum_result.aum);
-        let fee_bps: Uint128 = Uint128::zero();
-        // {
-        //     for deposit in &deposits {
-        //         let deposit_value
-        //     }
-        // };
-        
+        let pre_fee = safe_price_to_Uint128(total_user_deposit_value).multiply_ratio(total_share, safe_price_to_Uint128(aum_value_price));
+
+
+        // TODO
+        let fee_bps = Uint128::zero();//calculate_fee_basis_points(
+
+        //     basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
+        //     basket.total_weights, 
+        //     safe_price_to_Uint128(total_user_deposit_value),
+        //     offer_pool.1.expo.try_into().unwrap(),
+        //     offer_asset.amount, 
+        //     false
+        // );
         let post_fee = pre_fee.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
         post_fee
     };
@@ -735,7 +706,7 @@ pub fn provide_liquidity(
         attr("action", "provide_liquidity"),
         attr("sender", info.sender.as_str()),
         attr("receiver", receiver.as_str()),
-        attr("assets", format!("{:?}", &assets)),
+        attr("offer_asset", format!("{:?}", &offer_asset)),
         attr("share", share.to_string()),
     ]))
 }
@@ -779,7 +750,7 @@ fn mint_liquidity_token_message(
 
 
 
-fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {
+pub fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {
     let output = input as i64;
     if output as u128 == input {
         return Ok(output)
@@ -788,7 +759,7 @@ fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {
     }
 }
 
-fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
+pub fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
     let output = input as u128;
     if output as i64 == input {
         return Ok(output)
@@ -799,24 +770,23 @@ fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
 
 
 
-fn safe_i64_expo_to_u128(
-    amount: i64,
-    expo: i32,
+pub fn safe_price_to_Uint128(
+    price: Price,
 ) -> Uint128 {
 
     // Positive price
-    assert!(amount >= 0, "amount must be non-negative");
-    let amount: u128 = amount as u128;
+    assert!(price.price >= 0, "amount must be non-negative");
+    let amount: u128 = price.price as u128;
 
-    if expo >= 0 {
+    if price.expo >= 0 {
 
         // Deal with non-negative exponent
-        let expo = expo as u32;
+        let expo = price.expo as u32;
         Uint128::from(amount).multiply_ratio(10_u32.pow(expo), 1_u32)
     } else {
 
         // Deal with negative exponent
-        let expo = expo.abs() as u32;
+        let expo = price.expo.abs() as u32;
         Uint128::from(amount).multiply_ratio(1_u32, 10_u32.pow(expo))
     }
 

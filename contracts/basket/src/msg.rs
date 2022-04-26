@@ -28,8 +28,6 @@ pub struct InstantiateMsg {
 	pub liquidation_fee_usd: Uint128,
 	/// prevents gaming of oracle with hourly trades
 	pub min_profit_time: Uint128,
-	/// cache the total weights of the assets	
-	pub total_weights: Uint128,
 	/// account that can make changes to the exchange
 	pub admin: Addr,
     /// The token contract code ID used for the tokens in the pool
@@ -41,7 +39,7 @@ pub struct InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     DepositLiquidity {
-        assets: Vec<Asset>,
+        asset: Asset,
         slippage_tolerance: Option<Decimal>,
         receiver: Option<String>,
     },
