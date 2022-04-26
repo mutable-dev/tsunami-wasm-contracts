@@ -2,6 +2,7 @@ use crate::contract::{
     instantiate,
     query_basket,
     calculate_fee_basis_points,
+    Action,
  };
 use crate::mock_querier::mock_dependencies;
 use crate::{
@@ -142,6 +143,7 @@ fn exploration() {
 
 fn create_basket() -> Basket {
     let basket_asset = create_basket_asset();
+    let basket_asset2 = create_basket_asset();
     let basket_asset_copy = create_basket_asset();
     Basket::new(
         vec!(basket_asset, basket_asset_copy.clone()), 
@@ -177,7 +179,7 @@ fn create_basket() -> Basket {
 fn create_basket_asset() -> BasketAsset {
     BasketAsset {
         info: AssetInfo::NativeToken{denom: "uluna".to_string()},
-        token_weight:  Uint128::new(5),
+        token_weight:  Uint128::new(1),
         min_profit_basis_points:  Uint128::new(100),
         max_asset_amount:  Uint128::new(100),
         stable_token: false,
