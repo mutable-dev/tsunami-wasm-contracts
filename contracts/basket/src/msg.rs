@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Addr, Uint128, Decimal};
 use cw20::{Cw20Coin, MinterResponse, Cw20ReceiveMsg};
 use crate::asset::{Asset, AssetInfo};
-use crate::state::BasketAsset;
+use crate::state::{BasketAsset, OracleInterface};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -272,9 +272,9 @@ pub struct InstantiateAssetInfo {
     /// If the asset can be shorted 
     pub is_asset_shortable: bool,
     /// Address of the oracle for the asset 
-    pub oracle_address: Addr,
+    pub oracle: OracleInterface,
     /// Backup oracle address for the asset
-    pub backup_oracle_address: Addr,
+    pub backup_oracle: OracleInterface,
 }
 
 

@@ -1,6 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+
 use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256, StdResult, Querier};
 use std::convert::{TryFrom, TryInto};
 use cw_storage_plus::{Item, Map};
@@ -9,7 +10,7 @@ use crate::asset::{Asset, AssetInfo};
 use crate::msg::{InstantiateMsg, InstantiateAssetInfo};
 use crate::contract::{safe_price_to_Uint128, safe_u128_to_i64, USD_VALUE_PRECISION, safe_i64_to_u128};
 use crate::querier::{query_supply, query_token_precision};
-use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus, query_price_feed};
+use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus, query_price_feed, PriceFeedResponse};
 use std::cfg;
 use phf::{phf_map};
 
@@ -47,34 +48,48 @@ pub struct Basket {
 pub struct BasketAsset {
 	/// AssetInfo
 	pub info: AssetInfo,
+
 	/// The weight of this token in the LP 
 	pub token_weight: Uint128,
+
 	/// min about of profit a position needs to be in to take profit before time
 	pub min_profit_basis_points: Uint128,
+
 	/// maximum amount of this token that can be in the pool
 	pub max_asset_amount: Uint128,
+
 	/// Flag for whether this is a stable token
 	pub stable_token: bool,
+
 	/// Flag for whether this asset is shortable
 	pub shortable_token: bool,
+
 	/// The cumulative funding rate for the asset
 	pub cumulative_funding_rate: Uint128,
+
 	/// Last time the funding rate was updated
 	pub last_funding_time: Uint128,
+
 	/// Account with price oracle data on the asset
-	pub oracle_address: Addr,
+	pub oracle: OracleInterface,
+
 	/// Backup account with price oracle data on the asset
-	pub backup_oracle_address: Addr,
+	pub backup_oracle: OracleInterface,
+
 	/// Global size of shorts denominated in kind
 	pub global_short_size: Uint128,
+
 	/// Represents the total outstanding obligations of the protocol (position - size) for the asset
 	pub net_protocol_liabilities: Uint128,
+
 	/// Assets that are reserved and having positions trading against them
 	pub occupied_reserves: Uint128,
+
 	/// Represents how much in reserves the pool owns of the available asset from fees
 	pub fee_reserves: Uint128,
+
 	/// Represents the unoccupied + occupied amount of assets in the pool for trading 
-	/// does not include fee_reserves
+	/// Does not include fee_reserves
 	pub pool_reserves: Uint128,
 }
 
@@ -111,9 +126,9 @@ impl BasketAsset {
 			/// Last time the funding rate was updated
 			last_funding_time,
 			/// Account with price oracle data on the asset
-			oracle_address: asset_info.oracle_address,
+			oracle: asset_info.oracle,
 			/// Backup account with price oracle data on the asset
-			backup_oracle_address: asset_info.backup_oracle_address,
+			backup_oracle: asset_info.backup_oracle,
 			/// Global size of shorts denominated in kind
 			global_short_size,
 			/// Represents the total outstanding obligations of the protocol (position - size) for the asset
@@ -225,7 +240,8 @@ impl Basket {
 		Ok(redeem_value)
 	}
 
-	/// TODO: Gathers all `Asset`s in basket.
+	/// TODO: Completely deprecate this method's usage in contract.rs and then remove it from here
+	/// It's better to just work with the assets field of a basket directly
 	pub fn get_pools(&self) -> Vec<Asset> {
 		let mut v = vec![];
 		for asset in &self.assets {
@@ -239,80 +255,97 @@ impl Basket {
 
 	/// TODO: Get actual oracle price feeds
 	pub fn get_price_feeds(&self, querier: &QuerierWrapper) -> Result<Vec<PriceFeed>, ContractError> {
-
-		if cfg!(feature = "test")
-		{
-			let mut v = vec![];
-			for asset in &self.assets {
-				let dummy_time = 0;
-				let dummy_exponent = 0;
-				let dummy_max_num_publishers = 5;
-				let dummy_num_publishers = 3;
-				let dummy_exponent = 0;
-				let dummy_price = 1_000_000;
-				let dummy_conf = 1_000;
-				let dummy_ema_price = 1_000_000;
-				let dummy_ema_conf = 1_000;
-				let dummy_prev_price = 1_000_000;
-				let dummy_prev_conf = 1_000_000;
-				let dummy_pref_publish_time = -10;
-				v.push(
-					PriceFeed::new(
-						PriceIdentifier::new([0; 32]),
-						PriceStatus::Trading,
-						dummy_time,
-						dummy_exponent,
-						dummy_max_num_publishers,
-						dummy_num_publishers,
-						PriceIdentifier::new([0; 32]),
-						dummy_price,
-						dummy_conf,
-						dummy_ema_price,
-						dummy_ema_conf,
-						dummy_prev_price,
-						dummy_prev_conf,
-						dummy_pref_publish_time,
-					)
-				);
-			}
-			return Ok(v)
-		} else {
-			let mut v = vec![];
-			for asset in &self.assets {
-				// TODO: ADD REAL PRICE IDENTIFIERS
-				let dummy_identifier = PriceIdentifier::new([0; 32]);
-				v.push(
-					match query_price_feed(querier, asset.oracle_address.to_string(), dummy_identifier) {
-						Ok(price_feed_response) => price_feed_response.price_feed,
-						_ => return Err(ContractError::OracleQueryFailed)
-					}
-				);
-			}
-			return Ok(v)
+		let mut v = vec![];
+		for asset in &self.assets {
+			v.push(asset.oracle.get_price_feed(querier)?);
 		}
+		
+		Ok(v)
 	}
 
 	// This uses `get_price_feeds` and goes a step further to unwrap `Price`s.
 	pub fn get_prices(&self, querier: &QuerierWrapper) -> Result<Vec<Price>, ContractError> {
-		let price_feeds: Vec<PriceFeed> = match self.get_price_feeds(querier) {
-			Ok(price_feeds) => price_feeds,
-			_ => return Err(ContractError::OracleQueryFailed)
-		};
-		Ok(price_feeds
-			.iter()
-			.map(|&x| x.get_current_price().unwrap())
-			.collect())
+		let mut v = vec![];
+		for asset in &self.assets {
+			v.push(asset.oracle.get_price(querier)?);
+		}
+
+		Ok(v)
 	}
 }
 
-
-/// Represents whitelisted assets on the dex
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Oracle {
-	/// This is a fake price
-	pub price: Uint128,
-	/// Boolean
-	pub valid: bool,
+pub enum OracleInterface {
+	Pyth {
+		addr: Addr, 
+		price_id: PriceIdentifier
+	},
+	Stub {
+		price: i64,
+		expo: i32,
+	}
+}
+
+impl OracleInterface {
+	/// Construct new Pyth oracle source for an asset
+	pub fn from_pyth(addr: Addr, price_id: PriceIdentifier) -> Self {
+		Self::Pyth{ addr, price_id }
+	}
+
+	/// Construct a dummy oracle that will yield the given price
+	pub fn from_dummy(price: i64, expo: i32) -> Self {
+		Self::Stub{ price, expo }
+	}
+
+	pub fn get_price_feed(&self, querier: &QuerierWrapper) -> StdResult<PriceFeed> {
+		match self {
+			Self::Pyth{ addr, price_id } => {
+				let price_feed = query_price_feed(querier, addr.to_string(), *price_id)?.price_feed;
+
+				Ok(price_feed)
+			},
+
+			// Create a dummy price feed wrapper for the stub price
+			Self::Stub{ price, expo } => Ok(PriceFeed::new(
+				PriceIdentifier::new([0; 32]),
+				PriceStatus::Trading,
+				0,
+				*expo,
+				5,
+				10_000_000,
+				PriceIdentifier::new([0; 32]),
+				*price,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			)),
+		}
+	}
+
+	/// This function currently is never used. 
+	/// However it may make more sense to abstract out the usage of price_feeds with this,
+	/// so that users of Basket only ever have to work with Pyth Price structs instead of messing with PriceFeeds
+	pub fn get_price(&self, querier: &QuerierWrapper) -> Result<Price, ContractError> {
+		match self {
+			Self::Pyth{ addr, price_id } => {
+				let price_feed = query_price_feed(querier, addr.to_string(), *price_id)?.price_feed;
+
+				match price_feed.get_current_price() {
+					Some(price) => Ok(price),
+					None => Err(ContractError::OracleQueryFailed),
+				}
+			},
+
+			Self::Stub{ price, expo } => Ok(Price {
+				price: *price,
+				conf: 0,
+				expo: *expo
+			}),
+		}
+	}
 }
 
 pub const BASKET: Item<Basket> = Item::new("basket");

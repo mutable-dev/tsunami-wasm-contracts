@@ -52,6 +52,9 @@ pub enum ContractError {
 
     #[error("The asset the user is asking for is not in this basket")]
     AssetNotInBasket,
+
+    #[error("The user's deposit amount exceeds the reserve limit of one or more of the assets")]
+    DepositLimitExceeded,
 }
 
 impl From<OverflowError> for ContractError {
