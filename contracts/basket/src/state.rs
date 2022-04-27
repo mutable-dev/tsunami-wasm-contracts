@@ -1,7 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256, StdResult};
+
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256, StdResult, Querier};
 use std::convert::{TryFrom, TryInto};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
@@ -183,24 +184,26 @@ impl Basket {
 		total_weights
 	}
 
+	pub fn get_basket_assets(&self, asset_infos: &Vec<AssetInfo>) -> Vec<BasketAsset> {
+		let mut v: Vec<BasketAsset> = vec![];
+		for asset in asset_infos.iter() {
+			v.push(
+				self.assets
+					.iter()
+					.find(|basket_asset| basket_asset.info.equal(&asset))
+					.expect("an asset was not found in the basket")
+					.clone()
+			)
+		}
+		v
+	}
+
 	// CHECK: that we should take the value of the token account as AUM and not the general reserves from the
 	// available asset account
 	pub fn calculate_aum(
 		&self,
 		querier: &QuerierWrapper,
-		reserve_basket_asset_info: &AssetInfo,
 	) -> Result<Price, ContractError> {
-		let mut aum = Uint128::new(0);
-		let mut precise_price = 0;
-		let mut exponent =  1;
-		let mut current_basket_asset: &BasketAsset = &self.assets[0];
-		let reserve_asset_denom: String;
-		match reserve_basket_asset_info {
-				AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
-				_ => {
-						return Err(ContractError::NonNativeAssetAssertion);
-				}
-		}
 
 		// Build amounts: input to price_basket
 		let tokens: Vec<(Asset, Price)> = self.get_pools().iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
@@ -218,34 +221,28 @@ impl Basket {
 	
 
 	/// TODO: Calculates total number of lp tokens
-	pub fn total_tokens(&self) -> Uint128 {
-		Uint128::from(1_u32)
+	pub fn total_tokens(&self, querier: &QuerierWrapper, info: AssetInfo) -> StdResult<Uint128> {
+
+		// TODO: implement to_addr()
+		let contract_addr = Addr::unchecked("0x0000000000000000000000000000000000000000");//info.to_addr();
+
+		if cfg!(feature = "test") {
+			Ok(Uint128::from(1_u8))
+		} else {
+			Ok(query_supply(querier, contract_addr)?)
+		}
 	}
 
 	/// Calculates usd amount to withdraw. Reduce fees elsewhere
-	pub fn withdraw_amount(&self, lp_amount: Uint128, info: AssetInfo, querier: &QuerierWrapper) -> Result<Asset, ContractError> {
+	pub fn withdraw_amount(&self, lp_amount: Uint128, info: AssetInfo, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
 		
 		// Calculate aum in USD, in units of USD_VALUE_PRECISION
-		let aum_value_price: Price = self.calculate_aum(querier, &info)?;
+		let aum_value: Uint128 = safe_price_to_Uint128(self.calculate_aum(querier)?);
 
-		// Calculate amount of lp token to mint in USD, in units of USD_VALUE_PRECISION
-		let lp_amount_value: Uint128 = lp_amount.multiply_ratio(safe_price_to_Uint128(aum_value_price), self.total_tokens());
+		// Calculate value of lp_amount lp tokens in USD, in units of USD_VALUE_PRECISION
+		let redeem_value: Uint128 = lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, info)?);
 
-		// Get exchange rate between requested asset <--> usd
-		let asset_usd: Price = self.assets.iter().zip(self.get_prices(querier)?)
-			.find(|(asset, price)| asset.info == info).unwrap().1;
-	
-		// Invert the price to usd <--> requested asset
-		//let unit_price; // unit_price(); // TODO: WIP
-		//let usd_asset;//: Price =  // TODO: WIP
-		let asset_redeem_amount = lp_amount_value; // TODO: WIP
-
-		Ok(
-			Asset {
-				info: info,
-				amount: asset_redeem_amount,
-			}
-		)
+		Ok(redeem_value)
 	}
 
 	/// TODO: Completely deprecate this method's usage in contract.rs and then remove it from here

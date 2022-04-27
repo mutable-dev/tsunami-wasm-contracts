@@ -16,6 +16,7 @@ use std::cmp::max;
 use pyth_sdk_terra::{PriceFeed, Price, PriceIdentifier, PriceStatus};
 use std::convert::{TryInto, TryFrom};
 use protobuf::Message;
+use itertools::izip;
 
 
 /// Contract name that is used for migration.
@@ -71,7 +72,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::DepositLiquidity {asset, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, asset, slippage_tolerance, receiver),
+        ExecuteMsg::DepositLiquidity {assets, slippage_tolerance, receiver} => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
         ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
         ExecuteMsg::Swap { sender, offer_asset, belief_price, max_spread, to, ask_asset } => swap(deps, env, info, sender, offer_asset, belief_price, max_spread, to, ask_asset),
     }
@@ -118,35 +119,44 @@ pub fn withdraw_liquidity(
 
     // Retrieve ask pool
     let pools = basket.get_pools();
+    let token_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
     let ask_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(pool, _price)| ask_asset.info.equal(&pool.info)) {
             Some((pool, price)) => (pool.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
+    let ask_pool_value: Uint128 = safe_price_to_Uint128(
+        Price::price_basket(
+            &[(ask_pool.1, safe_u128_to_i64(ask_pool.0.amount.u128())?, token_decimals)],
+            USD_VALUE_PRECISION
+        ).expect("couldn't price ask asset")
+    );
 
 
     // Calculate gross asset return
-    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
-    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
-    let ask_asset_aum = basket.calculate_aum(&deps.querier, &ask_asset.info);
-    let mut refund_asset = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
+    let mut refund_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
+
 
     // TODO: Calculate fee_bps
-    let token_decimals = query_token_precision(&deps.querier, &refund_asset.info)? as i32;
-    let refund_price: Price = Price::price_basket(&[(ask_pool.1, safe_u128_to_i64(refund_asset.amount.u128())?, token_decimals)], USD_VALUE_PRECISION).expect("unable to price refund asset");
-    let fee_bps = Uint128::zero();//calculate_fee_basis_points(
-    //     basket.calculate_aum(&price_feeds, &refund_asset.info)?.aum,
-    //     basket.assets.iter().find(|asset| asset.info == ask_asset.info).unwrap(),
-    //     basket.total_weights, 
-    //     // TODO: This is "price". What goes here? putting ask_asset price for now
-    //     safe_price_to_Uint128(refund_price),
-    //     ask_pool.1.expo.try_into().unwrap(),
-    //     refund_asset.amount, 
-    //     false
-    // );
+    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
+    let fee_bps: Uint128 = calculate_fee_basis_points(
+        initial_aum_value, 
+        &basket, 
+        &vec![ask_pool_value], 
+        &vec![refund_value],
+        &vec![ask_asset.clone()],
+        Action::Ask
+    )[0];
 
-    // Update refund_asset
-    refund_asset.amount = refund_asset.amount.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
+    // Update refund_asset with fee
+    refund_value = refund_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
+    // milli-USDs per token
+    let invert_price: Price = get_unit_price().div(&ask_pool.1).unwrap();
+    let refund_amount = refund_value / safe_price_to_Uint128(invert_price);
+    let refund_asset = Asset {
+        amount: refund_amount,
+        info: ask_asset.info.clone()
+    };
 
     // Update the pool info
     let messages: Vec<CosmosMsg> = vec![
@@ -184,6 +194,14 @@ fn validate_addr(
 }
 
 
+/// Produces unit price of USD, in units of `USD_VALUE_PRECISION`
+pub fn get_unit_price() -> Price {
+    Price {
+        price: 10_i64.pow(-USD_VALUE_PRECISION as u32),
+        expo: 0,
+        conf: 0
+    }
+}
 
 fn instantiate_lp(
     msg: &InstantiateMsg,
@@ -405,72 +423,66 @@ pub fn swap(
     }
 
     // Grab relevant asset pools in basket, zipped with price
+    let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
     let offer_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(pool, _price)| offer_asset.info.equal(&pool.info)) {
             Some((pool, price)) => (pool.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
+    let offer_pool_value: Uint128 = safe_price_to_Uint128(
+        Price::price_basket(
+            &[(offer_pool.1, safe_u128_to_i64(offer_pool.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_pool.0.info).unwrap() as i32)],
+            USD_VALUE_PRECISION
+        ).unwrap()
+    );
+    let ask_decimals: i32 = query_token_precision(&deps.querier, &ask_asset)?.try_into().unwrap();
     let ask_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(pool, _price)| ask_asset.equal(&pool.info)) {
             Some((pool, price)) => (pool.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
+    let ask_pool_value: Uint128 = safe_price_to_Uint128(
+        Price::price_basket(
+            &[(ask_pool.1, safe_u128_to_i64(ask_pool.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &ask_pool.0.info).unwrap() as i32)],
+            USD_VALUE_PRECISION
+        ).unwrap()
+    );
 
-    // Get price feeds, prices of basket assets
-    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
-    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
-
-    // Get price of ask in offer to at least SIG_FIGS sig figs (fails otherwise)
-    const SIG_FIGS: i32 = 6;
-    let ask_usd: Price = ask_pool.1;
-    let offer_usd: Price = offer_pool.1;
-    let ask_offer: Price = ask_usd.get_price_in_quote(&offer_usd, SIG_FIGS).unwrap();
-
-    // Compute gross = offer * (offer aum / ask aum) to at least SIG_FIGS sig figs (fails otherwise)
-    // TODO: check/verify which decimals this should be. Probably should be token decimals so that offer_asset.amount is just "lamports".
-    let todo_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
-    let gross_output_asset_out: Price = Price::price_basket(&[(ask_offer, safe_u128_to_i64(offer_asset.amount.u128())?, todo_decimals)], todo_decimals).unwrap();
-
-    // TODO: Compute offer fee 
-    let offer_aum = basket.calculate_aum(&deps.querier, &offer_asset.info)?;
-    //let aum_price;
+    // TODO: Compute offer and ask fee 
+    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
     let offer_decimals = query_token_precision(&deps.querier, &offer_asset.info)? as i32;
-    let offer_price: Price = Price::price_basket(&[(offer_pool.1, safe_u128_to_i64(offer_asset.amount.u128())?, offer_decimals)], USD_VALUE_PRECISION).expect("couldn't price offer_asset");
-    let offer_fee_in_basis_points: Uint128 = Uint128::zero();//calculate_fee_basis_points(
-    //     offer_aum.aum,
-    //     basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
-    //     basket.total_weights, 
-    //     offer_price,
-    //     offer_asset.amount, 
-    //     true
-    // );
+    let offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_pool.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), offer_decimals)], USD_VALUE_PRECISION).unwrap());
+    let offer_fee_bps: Uint128 = calculate_fee_basis_points(
+        initial_aum_value, 
+        &basket, 
+        &vec![offer_pool_value], 
+        &vec![offer_value],
+        &basket.get_basket_assets(&vec![offer_asset.info.clone()]),
+        Action::Offer
+    )[0];
+    let ask_fee_bps: Uint128 = calculate_fee_basis_points(
+        initial_aum_value, 
+        &basket, 
+        &vec![ask_pool_value], 
+        &vec![offer_value],
+        &basket.get_basket_assets(&vec![ask_asset.clone()]),
+        Action::Ask
+    )[0];
 
-    // Compute ask fee
-    // Can reuse offer_value as return_value
-    let ask_aum = basket.calculate_aum(&deps.querier, &ask_asset)?;
-    let ask_fee_in_basis_points = Uint128::zero();//calculate_fee_basis_points(
-    //     ask_aum.aum, 
-    //     basket.assets.iter().find(|asset| asset.info == ask_asset).unwrap(),
-    //     basket.total_weights, 
-    //     Uint128::new(ask_aum.price as u128),
-    //     ask_aum.exponent as u32,
-    //     safe_i64_expo_to_u128(gross_output_asset_out.price, gross_output_asset_out.expo),
-    //     false
-    // );
-
-    // TODO: check if i32 -> u128 cast is safe (fails appropriately)
-    // TODO: Ensure this number of decimals is appropriate
-    let net_output_asset_out = safe_price_to_Uint128(gross_output_asset_out)
+    // Calculate post-fee USD value, then convert USD value to number of tokens.
+    let refund_value = offer_value
         .multiply_ratio(
-            BASIS_POINTS_PRECISION - ask_fee_in_basis_points - offer_fee_in_basis_points,
+            BASIS_POINTS_PRECISION - ask_fee_bps - offer_fee_bps,
             BASIS_POINTS_PRECISION
     );
+    let invert_price: Price = get_unit_price().div(&ask_pool.1).unwrap();
+    let refund_amount = refund_value / safe_price_to_Uint128(invert_price);
 
 
     // Compute the tax for the receiving asset (if it is a native one)
     let return_asset = Asset {
         info: ask_pool.0.info.clone(),
-        amount: net_output_asset_out.try_into().expect("Failed Uint256 -> Uint128"),
+        amount: refund_amount,
     };
     let receiver = to.unwrap_or_else(|| sender.clone());
     let mut messages: Vec<CosmosMsg> =
@@ -490,7 +502,7 @@ pub fn swap(
         .add_attribute("offer_asset", offer_asset.info.to_string())
         .add_attribute("ask_asset", ask_pool.0.info.to_string())
         .add_attribute("offer_amount", offer_asset.amount.to_string())
-        .add_attribute("return_amount", net_output_asset_out.to_string())
+        .add_attribute("return_amount", refund_value.to_string())
         //.add_attribute("spread_amount", spread_amount.to_string())
         //.add_attribute("commission_amount", commission_amount.to_string())
         //.add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
@@ -515,48 +527,53 @@ pub fn swap(
 /// 
 /// This returns.
 pub fn calculate_fee_basis_points(
-	aum_value_price: Price,
+    initial_aum_value: Uint128,
     basket: &Basket,
-	(basket_asset, reserve_value_price): (&BasketAsset, Price),
-	offer_or_ask_value_price: Price,
+	initial_reserve_values: &Vec<Uint128>,
+	offer_or_ask_values: &Vec<Uint128>,
+    offer_or_ask_assets: &Vec<BasketAsset>,
 	action: Action
-) -> Uint128 {
-
-    // Get current aum in USD, in units of USD_VALUE_PRECISION
-    let aum_value: Uint128 = safe_price_to_Uint128(aum_value_price);
-
-    // Get current value of token reserve in USD, in units of USD_VALUE_PRECISION
-	// let current_reserves: Uint128 = basket_asset.pool_reserves;
-	let initial_reserve_usd_value: Uint128 = safe_price_to_Uint128(reserve_value_price);
-
-    // Get value of offer or ask in USD, in units of USD_VALUE_PRECISION
-	let diff_usd_value: Uint128 = safe_price_to_Uint128(offer_or_ask_value_price);
+) -> Vec<Uint128> {
+    
+    // Compute new aum_value
+    let new_aum_value: Uint128 = initial_aum_value + offer_or_ask_values.iter().sum::<Uint128>();
 
     // Compute updated reserve value by adding or subtracting diff_usd_value based on action
-    let next_reserve_usd_value: Uint128 = match action {
-        Action::Offer => initial_reserve_usd_value + diff_usd_value,
-        Action::Ask => initial_reserve_usd_value.saturating_sub(diff_usd_value)
+    let next_reserve_usd_values: Vec<Uint128> = match action {
+        Action::Offer => initial_reserve_values.iter().zip(offer_or_ask_values).map(|(&a, &b)| a + b).collect(),
+        Action::Ask => initial_reserve_values.iter().zip(offer_or_ask_values).map(|(&a, &b)| a.checked_sub(b).expect("ask too large")).collect(),
     };
 	
-    // Compute target value based on weight, so that we may compare to the updated value
-	let target_lp_usd_value: Uint128 = aum_value
-        .multiply_ratio(basket_asset.token_weight, basket.get_total_weights());
+    let mut fee_bps: Vec<Uint128> = vec![];
+    for i in 0..offer_or_ask_assets.len() {
 
-    // First depositor should not be hit with a fee
-	if aum_value.is_zero() || initial_reserve_usd_value.is_zero(){
-		return BASE_FEE_IN_BASIS_POINTS;
-	}
+        let offer_or_ask_asset = offer_or_ask_assets[i].clone();
+        let initial_reserve_value = initial_reserve_values[i].clone();
+        let next_reserve_usd_value = next_reserve_usd_values[i].clone();
 
-    // Calculate the initial and new distance from the target value
-	let initial_distance = target_lp_usd_value.max(initial_reserve_usd_value) - target_lp_usd_value.min(initial_reserve_usd_value);
-	let new_distance = target_lp_usd_value.max(next_reserve_usd_value) - target_lp_usd_value.min(next_reserve_usd_value);
-    let improvement = new_distance <= initial_distance;
+        // Compute target value based on weight, so that we may compare to the updated value
+        let initial_target_lp_usd_value: Uint128 = initial_aum_value
+            .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());
+        let new_target_lp_usd_value: Uint128 = new_aum_value
+            .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());
 
-	if improvement {
-        return BASE_FEE_IN_BASIS_POINTS.multiply_ratio(target_lp_usd_value.saturating_sub(initial_distance), target_lp_usd_value);
-	} else {
-        return BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(new_distance, target_lp_usd_value).min(PENALTY_IN_BASIS_POINTS);
+        // First depositor should not be hit with a fee
+        if new_aum_value.is_zero() || initial_reserve_value.is_zero(){
+            fee_bps.push(Uint128::zero());
+        }
+
+        // Calculate the initial and new distance from the target value
+        let initial_distance: Uint128 = initial_target_lp_usd_value.max(initial_reserve_value) - initial_target_lp_usd_value.min(initial_reserve_value);
+        let new_distance: Uint128 = new_target_lp_usd_value.max(next_reserve_usd_value) - new_target_lp_usd_value.min(next_reserve_usd_value);
+        let improvement = new_distance <= initial_distance;
+
+        if improvement {
+            fee_bps.push(BASE_FEE_IN_BASIS_POINTS.multiply_ratio(initial_target_lp_usd_value - initial_distance.min(new_target_lp_usd_value), initial_target_lp_usd_value));
+        } else {
+            fee_bps.push(BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(new_distance.min(new_target_lp_usd_value), new_target_lp_usd_value));
+        }
     }
+    fee_bps
 }
 
 pub enum Action {
@@ -587,16 +604,20 @@ pub fn provide_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    offer_asset: Asset,
+    offer_assets: Vec<Asset>,
     slippage_tolerance: Option<Decimal>,
     receiver: Option<String>,
 ) -> Result<Response, ContractError> {
 
-    // Check assets for valid formatting
-    offer_asset.info.check(deps.api)?;
+    
+    for asset in &offer_assets {
+        // Check assets for valid formatting
+        asset.info.check(deps.api)?;
 
-    // Validate amount of native tokens transferred
-    offer_asset.assert_sent_native_token_balance(&info)?;
+        // Validate amount of native tokens transferred
+        asset.assert_sent_native_token_balance(&info)?;
+    }
+
 
     // Load basket and gather pools
     let mut basket: Basket = BASKET.load(deps.storage)?;
@@ -611,51 +632,81 @@ pub fn provide_liquidity(
                 msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
                     owner: info.sender.to_string(),
                     recipient: env.contract.address.to_string(),
-                    amount: offer_asset.amount,
+                    amount: offer_assets[i].amount,
                 })?,
                 funds: vec![],
             }));
         } else {
             // If the asset is native token, the pool balance is already increased
             // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            pool.amount = pool.amount.checked_sub(offer_asset.amount)?;
+            pool.amount = pool.amount.checked_sub(offer_assets[i].amount)?;
         }
     }
 
     // Grab relevant asset pools in basket, zipped with price
-    let offer_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
-        .find(|(pool, _price)| offer_asset.info.equal(&pool.info)) {
-            Some((pool, price)) => (pool.clone(), price.clone()),
-            None => return Err(ContractError::AssetNotInBasket)
+    let offer_pools: Vec<(Asset, Price)> = {
+        let mut v: Vec<(Asset, Price)>= vec![];
+
+        for asset in &offer_assets {
+            v.push(match pools
+                .iter()
+                .zip(basket.get_prices(&deps.querier)?)
+                .find(|(pool, _price)| asset.info.equal(&pool.info)) {
+                    Some((pool, price)) => (pool.clone(), price.clone()),
+                    None => return Err(ContractError::AssetNotInBasket)
+                }
+            )
+        }
+        v
     };
 
+    // Price of one token --> Value of pools
+    let offer_pool_values: Vec<Uint128> = offer_pools
+        .iter()
+        .map(|(pool, price)| 
+            safe_price_to_Uint128(
+                    Price::price_basket(
+                    &[(*price, safe_u128_to_i64(pool.amount.u128()).unwrap(), query_token_precision(&deps.querier, &pool.info).unwrap() as i32)],
+                    USD_VALUE_PRECISION
+                ).unwrap()
+            )
+        )
+        .collect();
+    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
 
+    // Value of user deposits
+    let user_deposit_values: Vec<Uint128> = offer_pools
+        .iter()
+        .enumerate()
+        .map(|(i, (pool, price))| 
+            safe_price_to_Uint128(
+                    {
+                        assert!(offer_assets[i].info.equal(&pool.info));
+                        Price::price_basket(
+                            &[(*price, safe_u128_to_i64(offer_assets[i].amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_assets[i].info).unwrap() as i32)],
+                            USD_VALUE_PRECISION
+                    ).unwrap()
+                }
+            )
+        )
+        .collect();
+    let total_user_deposit_value: Uint128 = user_deposit_values.iter().sum();
+    
     // Begin calculating amount of LP token to mint
+    let new_aum_value = initial_aum_value + total_user_deposit_value;
 
     // Get price feeds, prices of basket assets
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
     let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
-    // Calculate value of user deposit
-    let asset_price = offer_pool.1;
-    let token_decimals = query_token_precision(&deps.querier, &offer_asset.info)? as i32;
-    let total_user_deposit_value: Price = Price::price_basket(&[(asset_price, safe_u128_to_i64(offer_asset.amount.u128())?, token_decimals)], USD_VALUE_PRECISION)
-        .expect("unable to price user's deposit");
-
-
-    // Calculate aum
-    // TODO: ensure reserve_basket_asset_info is the correct one
-    let aum_value_price = basket.calculate_aum(&deps.querier, &basket.assets[0].info)?;
-    
     // Retrieve LP token supply
     let total_share: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
 
-    
     // Calculate share
     let share: Uint128 = if total_share.is_zero() {
 
-        // Handle deposit into empty basket at 1:1 USD mint. First deposit gets zero fees
-        safe_price_to_Uint128(total_user_deposit_value)
+        // Handle deposit into empty basket at 1:1 USD_VALUE_PRECISION mint. First deposit gets zero fees
+        total_user_deposit_value
 
     } else {
 
@@ -668,20 +719,24 @@ pub fn provide_liquidity(
         // exchange rate is (lp supply) / (aum)
         // here we value * rate = value * lp supply / aum, safely
         // then, we reduce fees by doing gross * ( 10000 - deposit_fee ) / 10000
-        let pre_fee = safe_price_to_Uint128(total_user_deposit_value).multiply_ratio(total_share, safe_price_to_Uint128(aum_value_price));
+        let pre_fee: Uint128 = total_user_deposit_value.multiply_ratio(total_share, initial_aum_value);
 
+        // Gather bps for all fees
+        let fee_bps: Vec<Uint128> = calculate_fee_basis_points(
+            initial_aum_value, 
+            &basket, 
+            &offer_pool_values, 
+            &user_deposit_values,
+            &basket.get_basket_assets(&offer_assets.iter().map(|x| x.info.clone()).collect()),
+            Action::Offer
+        );
+        let fees: Vec<Uint128> = user_deposit_values
+            .iter()
+            .zip(fee_bps)
+            .map(|(value, bps)| value.multiply_ratio(BASIS_POINTS_PRECISION - bps, BASIS_POINTS_PRECISION))
+            .collect();
 
-        // TODO
-        let fee_bps = Uint128::zero();//calculate_fee_basis_points(
-
-        //     basket.assets.iter().find(|asset| asset.info == offer_asset.info).unwrap(),
-        //     basket.total_weights, 
-        //     safe_price_to_Uint128(total_user_deposit_value),
-        //     offer_pool.1.expo.try_into().unwrap(),
-        //     offer_asset.amount, 
-        //     false
-        // );
-        let post_fee = pre_fee.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
+        let post_fee = pre_fee - fees.iter().sum::<Uint128>();
         post_fee
     };
 
@@ -706,7 +761,7 @@ pub fn provide_liquidity(
         attr("action", "provide_liquidity"),
         attr("sender", info.sender.as_str()),
         attr("receiver", receiver.as_str()),
-        attr("offer_asset", format!("{:?}", &offer_asset)),
+        attr("offer_asset", format!("{:?}", &offer_assets)),
         attr("share", share.to_string()),
     ]))
 }

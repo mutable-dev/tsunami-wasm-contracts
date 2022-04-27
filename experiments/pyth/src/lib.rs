@@ -1,5 +1,5 @@
 
-
+use pyth_sdk_terra::*;
 
 
 
@@ -49,7 +49,7 @@ fn test_pyth_usd() {
 }
 
 #[test]
-fn test_invert_price() {
+fn invert_price() {
 
     use pyth_sdk_terra::*;
     const USD_VALUE_PRECISION: i32 = -3;
@@ -97,5 +97,24 @@ fn test_invert_price() {
 
     println!("The inverted pyth_price for the tokens is ({} +/- {}) x 10^{} token/USD", inverted_price.price, inverted_price.conf, inverted_price.expo);
 
-}
+    let unit_price: PriceFeed = PriceFeed::new(
+        PriceIdentifier::new([0; 32]),
+        PriceStatus::Trading,
+        0,
+        USD_VALUE_PRECISION,
+        5,
+        10_000_000,
+        PriceIdentifier::new([0; 32]),
+        10_i64.pow(-USD_VALUE_PRECISION as u32),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+    );
+    let inverted_price2: Price = pyth_price.div(&pyth_price).unwrap().div(&pyth_price).unwrap();
 
+    println!("The inverted2 pyth_price for the tokens is ({} +/- {}) x 10^{} token/USD", inverted_price2.price, inverted_price2.conf, inverted_price2.expo);
+
+}
