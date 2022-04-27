@@ -311,7 +311,7 @@ fn strongly_improves_basket_remove() {
         &vec![basket_asset],
         Action::Ask,
     );
-    assert_eq!(vec![Uint128::new(2)], fees);
+    assert_eq!(vec![Uint128::new(1)], fees);
 }
 
 #[test]
@@ -380,6 +380,24 @@ fn neutral_basket_add() {
         Action::Offer,
     );
     assert_eq!(vec![Uint128::new(14)], fees);
+}
+
+
+#[test]
+fn imbalanced_basket_big_double_balanced_add() {
+    let mut basket_asset = create_basket_asset();
+    let basket = create_basket();
+    basket_asset.pool_reserves = Uint128::new(450);
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(10_000),
+        &basket,
+        &vec![Uint128::new(9_900), Uint128::new(100)],
+        &vec![Uint128::new(100_000), Uint128::new(100_000)],
+        &vec![basket_asset],
+        Action::Offer,
+    );
+    assert_eq!(vec![Uint128::new(0)], fees);
 }
 
 // #[test]

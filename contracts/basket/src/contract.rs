@@ -568,7 +568,7 @@ pub fn calculate_fee_basis_points(
         let improvement = new_distance <= initial_distance;
 
         if improvement {
-            fee_bps.push(BASE_FEE_IN_BASIS_POINTS.multiply_ratio(new_target_lp_usd_value - initial_distance.min(new_target_lp_usd_value), new_target_lp_usd_value));
+            fee_bps.push(BASE_FEE_IN_BASIS_POINTS.multiply_ratio(initial_target_lp_usd_value - initial_distance.min(new_target_lp_usd_value), initial_target_lp_usd_value));
         } else {
             fee_bps.push(BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(new_distance.min(new_target_lp_usd_value), new_target_lp_usd_value));
         }
