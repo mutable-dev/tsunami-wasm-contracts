@@ -9,7 +9,7 @@ use crate::mock_querier::mock_dependencies;
 use crate::state::OracleInterface;
 use crate::{
     msg::*,
-    state::{Basket, BasketAsset},
+    state::{Basket, BasketAsset, TickerData},
     asset::{Asset, AssetInfo},
 };
 
@@ -48,6 +48,7 @@ fn proper_initialization() {
         is_asset_shortable: true,
         oracle: OracleInterface::from_dummy(100, 0),
         backup_oracle: OracleInterface::from_dummy(100, 0),
+        ticker_data: create_ticker_data()
     });
     let msg = InstantiateMsg {
         assets: assets,
@@ -125,6 +126,7 @@ fn proper_initialization() {
         occupied_reserves: Uint128::new(0),
         pool_reserves: Uint128::new(0),
         fee_reserves: Uint128::new(0),
+        ticker_data: create_ticker_data()
     }]);
     assert_eq!(basket.tax_basis_points, Uint128::new(1));
     assert_eq!(basket.stable_swap_fee_basis_points, Uint128::new(1));
@@ -155,6 +157,23 @@ fn create_instantiate_msg() -> InstantiateMsg {
     }
 }
 
+fn create_ticker_data() -> TickerData {
+    return TickerData {
+        testnet_address: Addr::unchecked("0x0000000000000000000000000000000000000000"),
+        mainnet_address: Addr::unchecked("0x0000000000000000000000000000000000000000"),
+        dummy_address: Addr::unchecked("0x0000000000000000000000000000000000000000"),
+        testnet_price_feed: PriceIdentifier::from_hex(
+            "0a3f000000000000000000000000000000000000000000000000000000000000",
+        ).unwrap(),
+        mainnet_price_feed: PriceIdentifier::from_hex(
+            "0a3f000000000000000000000000000000000000000000000000000000000000",
+        ).unwrap(),
+        dummy_price_feed: PriceIdentifier::from_hex(
+            "0a3f000000000000000000000000000000000000000000000000000000000000",
+        ).unwrap(),
+    }
+}
+
 /// Create a default instantiate asset info struct so we can fill in fields we're not interested in
 fn create_instantiate_asset_info() -> InstantiateAssetInfo {
     InstantiateAssetInfo {
@@ -167,6 +186,7 @@ fn create_instantiate_asset_info() -> InstantiateAssetInfo {
         is_asset_shortable: true,
         oracle: OracleInterface::from_dummy(100, 0),
         backup_oracle: OracleInterface::from_dummy(100, 0),
+        ticker_data: create_ticker_data()
     }
 }
 
@@ -182,19 +202,7 @@ fn create_basket() -> Basket {
     Basket::new(
         vec!(basket_asset, basket_asset2), 
         &InstantiateMsg{
-            assets: vec!(
-                InstantiateAssetInfo{
-                    info: basket_asset_copy.info.clone(),
-                    address: Addr::unchecked("name"),
-                    weight: Uint128::new(1),
-                    min_profit_basis_points: Uint128::new(1),
-                    max_asset_amount: Uint128::new(1),
-                    is_asset_stable: true,
-                    is_asset_shortable: true,
-                    oracle: OracleInterface::from_dummy(100, 0),
-                    backup_oracle: OracleInterface::from_dummy(100, 0),
-                }
-            ),
+            assets: vec!(create_instantiate_asset_info()),
             name: "blue chip basket".to_string(),
             tax_basis_points: Uint128::new(1),
             stable_tax_basis_points: Uint128::new(1),
@@ -226,7 +234,8 @@ fn create_basket_asset() -> BasketAsset {
         net_protocol_liabilities:  Uint128::new(0),
         occupied_reserves:  Uint128::new(0),
         fee_reserves: Uint128::new(0),
-        pool_reserves:  Uint128::new(400)
+        pool_reserves:  Uint128::new(400),
+        ticker_data: create_ticker_data()
     }
 }
 

@@ -90,6 +90,9 @@ pub struct BasketAsset {
 	/// Represents the unoccupied + occupied amount of assets in the pool for trading 
 	/// Does not include fee_reserves
 	pub pool_reserves: Uint128,
+
+	/// Pyth Oracle Data regarding the basket asset
+	pub ticker_data: TickerData
 }
 
 impl BasketAsset {
@@ -139,6 +142,8 @@ impl BasketAsset {
 			/// Represents the unoccupied + occupied amount of assets in the pool for trading 
 			/// does not include fee_reserves
 			pool_reserves,
+			/// Pyth Oracle Data regarding the basket asset
+			ticker_data: asset_info.ticker_data,
 		}
 	}
 }
@@ -353,27 +358,15 @@ impl OracleInterface {
 
 pub const BASKET: Item<Basket> = Item::new("basket");
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct TickerData {
-	pub testnet_address: &'static str,
-	pub mainnet_address: &'static str,
-	pub testnet_price_feed: &'static str,
-	pub mainnet_price_feed: &'static str,
+	pub testnet_address: Addr,
+	pub mainnet_address: Addr,
+	pub dummy_address: Addr,
+	pub testnet_price_feed: PriceIdentifier,
+	pub mainnet_price_feed: PriceIdentifier,
+	pub dummy_price_feed: PriceIdentifier,
 }
-
-pub static ASSET_MAP: phf::Map<&'static str,  TickerData> = phf_map! {
-	"ust" => TickerData {
-		testnet_address: "0x0000000000000000000000000000000000000000",
-		mainnet_address: "0x0000000000000000000000000000000000000000",
-		testnet_price_feed: "0x026d1f1cf9f1c0ee92eb55696d3bd2393075b611c4f468ae5b967175edc4c25c",
-		mainnet_price_feed: "0x0000000000000000000000000000000000000000",
-	},
-	"luna" => TickerData {
-		testnet_address: "0x0000000000000000000000000000000000000000",
-		mainnet_address: "0x0000000000000000000000000000000000000000",
-		testnet_price_feed: "0x6de025a4cf28124f8ea6cb8085f860096dbc36d9c40002e221fc449337e065b2",
-		mainnet_price_feed: "0x0000000000000000000000000000000000000000",
-	},
-};
 
 pub static PYTH_CONTRACTS : phf::Map<&'static str, &'static str> = phf_map! {
 	"mainnet" => "0x0000000000000000000000000000000000000000",
