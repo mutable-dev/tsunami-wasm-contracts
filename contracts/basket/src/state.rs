@@ -183,19 +183,7 @@ impl Basket {
 	pub fn calculate_aum(
 		&self,
 		querier: &QuerierWrapper,
-		//reserve_basket_asset_info: &AssetInfo,
 	) -> Result<Price, ContractError> {
-		// let mut aum = Uint128::new(0);
-		// let mut precise_price = 0;
-		// let mut exponent =  1;
-		// let mut current_basket_asset: &BasketAsset = &self.assets[0];
-		// let reserve_asset_denom: String;
-		// match reserve_basket_asset_info {
-		// 		AssetInfo::NativeToken{ denom } => reserve_asset_denom = denom.to_string(),
-		// 		_ => {
-		// 				return Err(ContractError::NonNativeAssetAssertion);
-		// 		}
-		// }
 
 		// Build amounts: input to price_basket
 		let tokens: Vec<(Asset, Price)> = self.get_pools().iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
@@ -231,10 +219,10 @@ impl Basket {
 		// Calculate aum in USD, in units of USD_VALUE_PRECISION
 		let aum_value: Uint128 = safe_price_to_Uint128(self.calculate_aum(querier)?);
 
-		// Calculate amount of lp token to mint in USD, in units of USD_VALUE_PRECISION
-		let refund_value: Uint128 = lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, info)?);
+		// Calculate value of lp_amount lp tokens in USD, in units of USD_VALUE_PRECISION
+		let redeem_value: Uint128 = lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, info)?);
 
-		Ok(refund_value)
+		Ok(redeem_value)
 	}
 
 	/// TODO: Gathers all `Asset`s in basket.
