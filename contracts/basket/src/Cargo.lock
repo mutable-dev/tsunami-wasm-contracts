@@ -490,9 +490,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.122"
+version = "0.2.124"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec647867e2bf0772e28c8bcde4f0d19a9216916e890543b5a03ed8ef27b8f259"
+checksum = "21a41fed9d98f27ab1c6d161da622a4fa35e8a54a8adc24bbf3ddd0ef70b0e50"
 
 [[package]]
 name = "once_cell"
@@ -601,9 +601,9 @@ dependencies = [
 
 [[package]]
 name = "pyth-sdk"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d42c6f9f014802561fee78b77d1191da5e66f389ea52093c5c2a436fd0cf1bb"
+checksum = "b03b5747fdf177a183e9c12a2f7bcfa007aee9c5523d0fdf56f063979e771582"
 dependencies = [
  "borsh",
  "borsh-derive",
@@ -614,9 +614,9 @@ dependencies = [
 
 [[package]]
 name = "pyth-sdk-terra"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63398ab1f5229d8932fb6b5c437399bff8eabac2e107c0d5d4cb1dce37ddaddd"
+checksum = "12f44822ba2c7dc2e3201ac3abe3d71f08cb2e83412ae8b2ed47a94fa6bbed87"
 dependencies = [
  "cosmwasm-std",
  "cosmwasm-storage",
@@ -848,9 +848,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.5.8"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
+checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
 dependencies = [
  "serde",
 ]
