@@ -90,7 +90,7 @@ pub struct BasketAsset {
 
 	/// Represents the unoccupied + occupied amount of assets in the pool for trading 
 	/// Does not include fee_reserves
-	pub pool_reserves: Uint128,
+	pub available_reserves: Uint128,
 
 	/// Pyth Oracle Data regarding the basket asset
 	pub ticker_data: TickerData
@@ -109,7 +109,7 @@ impl BasketAsset {
 		let global_short_size = Uint128::default();
 		let occupied_reserves = Uint128::default();
 		let fee_reserves = Uint128::default();
-		let pool_reserves = Uint128::default();
+		let available_reserves = Uint128::default();
 
 		BasketAsset {
 			/// Static asset info about the token
@@ -142,7 +142,7 @@ impl BasketAsset {
 			fee_reserves,
 			/// Represents the unoccupied + occupied amount of assets in the pool for trading 
 			/// does not include fee_reserves
-			pool_reserves,
+			available_reserves,
 			/// Pyth Oracle Data regarding the basket asset
 			ticker_data: asset_info.ticker_data,
 		}
@@ -206,10 +206,16 @@ impl Basket {
 	) -> Result<Price, ContractError> {
 
 		// Build amounts: input to price_basket
-		let tokens: Vec<(Asset, Price)> = self.get_assets().iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
+		let tokens: Vec<(BasketAsset, Price)> = self.assets.iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
 		let amounts: &[(Price, i64, i32)] = &tokens
 			.iter()
-			.map(|(asset, price)| (*price, safe_u128_to_i64(asset.amount.u128()).unwrap(), -(query_token_precision(querier, &asset.info).unwrap() as i32)))
+			.map(|(basket_asset, price)| (
+				*price, 
+				safe_u128_to_i64(
+					basket_asset.occupied_reserves.u128() +
+					basket_asset.available_reserves.u128()
+				).unwrap(), 
+				-(query_token_precision(querier, &basket_asset.info).unwrap() as i32)))
 			.collect::<Vec<(Price, i64, i32)>>();
 
 		// Construct aum Price result
@@ -243,19 +249,6 @@ impl Basket {
 		let redeem_value: Uint128 = lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, info)?);
 
 		Ok(redeem_value)
-	}
-
-	/// TODO: Completely deprecate this method's usage in contract.rs and then remove it from here
-	/// It's better to just work with the assets field of a basket directly
-	pub fn get_assets(&self) -> Vec<Asset> {
-		let mut v = vec![];
-		for asset in &self.assets {
-			v.push(Asset {
-				info: asset.info.clone(),
-				amount: Uint128::from(1_u32) // TODO: GATHER POOL BALANCES, REPLACE THIS DUMMY
-			})
-		}
-		v
 	}
 
 	/// TODO: Get actual oracle price feeds

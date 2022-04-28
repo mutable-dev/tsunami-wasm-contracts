@@ -125,7 +125,7 @@ fn proper_initialization() {
         net_protocol_liabilities: Uint128::new(0),
         last_funding_time: Uint128::new(0),
         occupied_reserves: Uint128::new(0),
-        pool_reserves: Uint128::new(0),
+        available_reserves: Uint128::new(0),
         fee_reserves: Uint128::new(0),
         ticker_data: create_ticker_data()
     }]);
@@ -235,7 +235,7 @@ fn create_basket_asset() -> BasketAsset {
         net_protocol_liabilities:  Uint128::new(0),
         occupied_reserves:  Uint128::new(0),
         fee_reserves: Uint128::new(0),
-        pool_reserves:  Uint128::new(400),
+        available_reserves:  Uint128::new(400),
         ticker_data: create_ticker_data()
     }
 }
@@ -278,7 +278,7 @@ fn slightly_improves_basket_add() {
 fn strongly_improves_basket_add() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(4);
+    basket_asset.available_reserves = Uint128::new(4);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -295,7 +295,7 @@ fn strongly_improves_basket_add() {
 fn strongly_harms_basket_add() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(500);
+    basket_asset.available_reserves = Uint128::new(500);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -312,7 +312,7 @@ fn strongly_harms_basket_add() {
 fn lightly_harms_basket_add() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(500);
+    basket_asset.available_reserves = Uint128::new(500);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -329,7 +329,7 @@ fn lightly_harms_basket_add() {
 fn slightly_improves_basket_remove() {
         let mut basket_asset = create_basket_asset();
         let basket = create_basket();
-        basket_asset.pool_reserves = Uint128::new(550);
+        basket_asset.available_reserves = Uint128::new(550);
         let fees = calculate_fee_basis_points(
             Uint128::new(100_000),
             &basket,
@@ -345,7 +345,7 @@ fn slightly_improves_basket_remove() {
 fn strongly_improves_basket_remove() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(1000);
+    basket_asset.available_reserves = Uint128::new(1000);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -362,7 +362,7 @@ fn strongly_improves_basket_remove() {
 fn strongly_harms_basket_remove() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(10);
+    basket_asset.available_reserves = Uint128::new(10);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -379,7 +379,7 @@ fn strongly_harms_basket_remove() {
 fn lightly_harms_basket_remove() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(500);
+    basket_asset.available_reserves = Uint128::new(500);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -396,7 +396,7 @@ fn lightly_harms_basket_remove() {
 fn neutral_basket_remove() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(550);
+    basket_asset.available_reserves = Uint128::new(550);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(101_000),
@@ -413,7 +413,7 @@ fn neutral_basket_remove() {
 fn neutral_basket_add() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(450);
+    basket_asset.available_reserves = Uint128::new(450);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(99_000),
@@ -431,7 +431,7 @@ fn neutral_basket_add() {
 fn imbalanced_basket_big_double_balanced_add() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
-    basket_asset.pool_reserves = Uint128::new(450);
+    basket_asset.available_reserves = Uint128::new(450);
 
     let fees = calculate_fee_basis_points(
         Uint128::new(10_000),
@@ -449,7 +449,7 @@ fn imbalanced_basket_big_double_balanced_add() {
 //     let mut basket = create_basket();
 //     let basket_asset = create_basket_asset();
 //     let mut deps = mock_dependencies(&[]);
-//     basket.assets[0].pool_reserves = Uint128::new(450);
+//     basket.assets[0].available_reserves = Uint128::new(450);
 
 //     let mut price_feeds = Vec::new();
 //     price_feeds.push(create_price_feed(10_000_000, 6));
@@ -467,10 +467,10 @@ fn imbalanced_basket_big_double_balanced_add() {
 //     let basket_asset = create_basket_asset();
 //     let basket_asset_copy = create_basket_asset();
 //     let mut deps = mock_dependencies(&[]);
-//     basket.assets[0].pool_reserves = Uint128::new(450);
+//     basket.assets[0].available_reserves = Uint128::new(450);
 //     basket.assets[0].info = AssetInfo::NativeToken{denom: "ste".to_string()};
 //     basket.assets.push(basket_asset);
-//     basket.assets[1].pool_reserves = Uint128::new(10);
+//     basket.assets[1].available_reserves = Uint128::new(10);
 
 //     let mut price_feeds = Vec::new();
 //     price_feeds.push(create_price_feed(10_000_000, 6));
@@ -518,7 +518,7 @@ fn single_asset_deposit() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].pool_reserves);
+    println!("{}", basket.assets[0].available_reserves);
 
     let depositor = mock_info("first_depositor", &coins(10, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(10) };
@@ -543,7 +543,7 @@ fn single_asset_deposit() {
     assert_eq!(Uint128::new(10), contract_balance_luna.amount);
 
     // Assert that this deposited amount matches with the data stored in the basket (the first deposit should be feeless)
-    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].pool_reserves);
+    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].available_reserves);
     
     // Assert that the depositor receives LP tokens in return
     let lp_token_addr = query_basket(deps.as_ref()).unwrap().lp_token_address;
@@ -591,7 +591,7 @@ fn multi_asset_deposit() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].pool_reserves);
+    println!("{}", basket.assets[0].available_reserves);
 
     let luna_deposit_amount = 10;
     let ust_deposit_amount = 10;
@@ -637,8 +637,8 @@ fn multi_asset_deposit() {
     assert_eq!(Uint128::new(ust_deposit_amount), contract_balance_ust.amount);
 
     // Assert that the deposited amounts match with the pool reserves data in the basket
-    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].pool_reserves);
-    assert_eq!(contract_balance_ust.amount, query_basket(deps.as_ref()).unwrap().assets[1].pool_reserves);
+    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].available_reserves);
+    assert_eq!(contract_balance_ust.amount, query_basket(deps.as_ref()).unwrap().assets[1].available_reserves);
 
     // Assert that the depositor receives LP tokens in return
     let lp_token_addr = query_basket(deps.as_ref()).unwrap().lp_token_address;
@@ -688,7 +688,7 @@ fn multiple_deposits() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].pool_reserves);
+    println!("{}", basket.assets[0].available_reserves);
 
     let luna_amount1 = 10;
     let luna_amount2 = 10;
@@ -725,7 +725,7 @@ fn multiple_deposits() {
     assert_eq!(Uint128::new(luna_amount1 + luna_amount2), contract_balance_luna.amount);
 
     // Assert that this deposited amount matches with the data stored in the basket (the first deposit should be feeless)
-    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].pool_reserves);
+    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].available_reserves);
     
     // Assert that the depositor receives LP tokens in return
     let lp_token_addr = query_basket(deps.as_ref()).unwrap().lp_token_address;
@@ -785,7 +785,7 @@ fn try_deposit_insufficient_funds() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].pool_reserves);
+    println!("{}", basket.assets[0].available_reserves);
 
     let luna_amount = 10;
 
@@ -834,7 +834,7 @@ fn try_deposit_exceeding_limit() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].pool_reserves);
+    println!("{}", basket.assets[0].available_reserves);
 
     let depositor = mock_info("first_depositor", &coins(11, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(11) };
@@ -879,7 +879,7 @@ fn try_deposit_unwhitelisted_asset() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].pool_reserves);
+    println!("{}", basket.assets[0].available_reserves);
 
     let random_asset_info = AssetInfo::NativeToken{ denom: "random_asset".to_string() };
     let depositor = mock_info("first_depositor", &coins(1, "random_asset"));

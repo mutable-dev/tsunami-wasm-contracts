@@ -118,18 +118,22 @@ pub fn withdraw_liquidity(
     }
 
     // Retrieve ask asset
-    let assets = basket.get_assets();
+    let assets = basket.assets.clone();
     let token_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
-    let ask_asset_with_price: (Asset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
+    let ask_asset_with_price: (BasketAsset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.info.equal(&asset.info)) {
             Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    // perhaps we need to be using our own accounting in the basket asset instead of using
-    // the total amount of the asset held by the contract
+    // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
-            &[(ask_asset_with_price.1, safe_u128_to_i64(ask_asset_with_price.0.amount.u128())?, token_decimals)],
+            &[(
+                ask_asset_with_price.1,
+                safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())? +
+                safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?, 
+                token_decimals
+            )],
             USD_VALUE_PRECISION
         ).expect("couldn't price ask asset")
     );
@@ -402,10 +406,9 @@ pub fn swap(
 
     // Load basket singleton, get assets
     let mut basket: Basket = BASKET.load(deps.storage)?;
-    let mut assets: Vec<Asset> = basket.get_assets();
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    for (i, asset) in assets.iter_mut().enumerate() {
+    for (i, asset) in basket.assets.iter_mut().enumerate() {
         // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
         if let AssetInfo::Token { contract_addr, .. } = &asset.info {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -417,40 +420,44 @@ pub fn swap(
                 })?,
                 funds: vec![],
             }));
-        } else {
-            // If the asset is native token, the asset's balance is already increased
-            // To calculate the total amount of deposits properly, we should subtract the user deposit amount
-            // from what the contract holds
-            asset.amount = asset.amount.checked_sub(offer_asset.amount)?;
         }
     }
 
     // Grab relevant asset assets in basket, zipped with price
     let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
-    let offer_asset_with_price: (Asset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
+    let offer_asset_with_price: (BasketAsset, Price, Asset) = match basket.assets.iter()
+        .zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| offer_asset.info.equal(&asset.info)) {
-            Some((asset, price)) => (asset.clone(), price.clone()),
+            Some((asset, price)) => ( asset.clone(),  price.clone(), offer_asset.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    // perhaps we need to be using our own accounting in the basket asset instead of using
-    // the total amount of the asset held by the contract
+    // Determine the amount of an asset held in the contract based on our internal accounting
     let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
-            &[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset_with_price.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_asset_with_price.0.info).unwrap() as i32)],
+            &[(
+                offer_asset_with_price.1, 
+                safe_u128_to_i64(offer_asset_with_price.0.available_reserves.u128())? +
+                safe_u128_to_i64(offer_asset_with_price.0.occupied_reserves.u128())?, 
+                query_token_precision(&deps.querier, &offer_asset_with_price.0.info).unwrap() as i32
+            )],
             USD_VALUE_PRECISION
         ).unwrap()
     );
     let ask_decimals: i32 = query_token_precision(&deps.querier, &ask_asset)?.try_into().unwrap();
-    let ask_asset_with_price: (Asset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
+    let ask_asset_with_price: (BasketAsset, Price) = match basket.assets.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.equal(&asset.info)) {
             Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    // perhaps we need to be using our own accounting in the basket asset instead of using
-    // the total amount of the asset held by the contract
+    // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
-            &[(ask_asset_with_price.1, safe_u128_to_i64(ask_asset_with_price.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &ask_asset_with_price.0.info).unwrap() as i32)],
+            &[(
+                ask_asset_with_price.1, 
+                safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())? +
+                safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?, 
+                query_token_precision(&deps.querier, &ask_asset_with_price.0.info).unwrap() as i32
+            )],
             USD_VALUE_PRECISION
         ).unwrap()
     );
@@ -628,11 +635,11 @@ pub fn provide_liquidity(
 
     // Load basket and gather assets
     let mut basket: Basket = BASKET.load(deps.storage)?;
-    let mut assets = basket.get_assets();
+    let mut basket_assets = basket.assets.clone();
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    for (i, asset) in assets.iter_mut().enumerate() {
-        // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
+    for (i, asset) in basket_assets.iter_mut().enumerate() {
+        // If the asset is a token contract, then we need to execute a TransferFrom msg to receive basket_assets
         if let AssetInfo::Token { contract_addr, .. } = &asset.info {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_addr.to_string(),
@@ -643,19 +650,15 @@ pub fn provide_liquidity(
                 })?,
                 funds: vec![],
             }));
-        } else {
-            // If the asset is native token, the pool balance is already increased
-            // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            asset.amount = asset.amount.checked_sub(offer_assets[i].amount)?;
         }
     }
 
     // Grab relevant asset assets in basket, zipped with price
-    let offer_assets: Vec<(Asset, Price)> = {
-        let mut v: Vec<(Asset, Price)>= vec![];
+    let offer_assets_with_price: Vec<(BasketAsset, Price)> = {
+        let mut v: Vec<(BasketAsset, Price)>= vec![];
 
         for asset in &offer_assets {
-            v.push(match assets
+            v.push(match basket.assets
                 .iter()
                 .zip(basket.get_prices(&deps.querier)?)
                 .find(|(asset, _price)| asset.info.equal(&asset.info)) {
@@ -668,12 +671,17 @@ pub fn provide_liquidity(
     };
 
     // Price of one token --> Value of assets
-    let offer_asset_values: Vec<Uint128> = offer_assets
+    let offer_asset_values: Vec<Uint128> = offer_assets_with_price
         .iter()
-        .map(|(asset, price)| 
+        .map(|(basket_asset, price)| 
             safe_price_to_Uint128(
                     Price::price_basket(
-                    &[(*price, safe_u128_to_i64(asset.amount.u128()).unwrap(), query_token_precision(&deps.querier, &asset.info).unwrap() as i32)],
+                    &[(
+                        *price, 
+                        safe_u128_to_i64(basket_asset.available_reserves.u128()).unwrap() +
+                            safe_u128_to_i64(basket_asset.occupied_reserves.u128()).unwrap(), 
+                        query_token_precision(&deps.querier, &basket_asset.info).unwrap() as i32
+                    )],
                     USD_VALUE_PRECISION
                 ).unwrap()
             )
@@ -682,15 +690,21 @@ pub fn provide_liquidity(
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
 
     // Value of user deposits
-    let user_deposit_values: Vec<Uint128> = offer_assets
+    let user_deposit_values: Vec<Uint128> = offer_assets_with_price
         .iter()
         .enumerate()
-        .map(|(i, (asset, price))| 
+        .map(|(i, (offer_asset_with_price, price))| 
             safe_price_to_Uint128(
                     {
-                        assert!(offer_assets[i].0.info.equal(&asset.info));
+                        assert!(offer_assets[i].info.equal(&offer_asset_with_price.info));
                         Price::price_basket(
-                            &[(*price, safe_u128_to_i64(offer_assets[i].0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_assets[i].0.info).unwrap() as i32)],
+                            &[(
+                                *price, 
+                                safe_u128_to_i64(
+                                    offer_asset_with_price.available_reserves.u128() + offer_asset_with_price.occupied_reserves.u128()
+                                ).unwrap(),
+                                query_token_precision(&deps.querier, &offer_asset_with_price.info).unwrap() as i32
+                            )],
                             USD_VALUE_PRECISION
                     ).unwrap()
                 }
@@ -734,7 +748,7 @@ pub fn provide_liquidity(
             &basket, 
             &offer_asset_values, 
             &user_deposit_values,
-            &basket.get_basket_assets(&offer_assets.iter().map(|x| x.0.info.clone()).collect()),
+            &basket.assets,
             Action::Offer
         );
         let fees: Vec<Uint128> = user_deposit_values
