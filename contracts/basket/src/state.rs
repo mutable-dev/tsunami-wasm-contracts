@@ -206,7 +206,7 @@ impl Basket {
 	) -> Result<Price, ContractError> {
 
 		// Build amounts: input to price_basket
-		let tokens: Vec<(Asset, Price)> = self.get_pools().iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
+		let tokens: Vec<(Asset, Price)> = self.get_assets().iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
 		let amounts: &[(Price, i64, i32)] = &tokens
 			.iter()
 			.map(|(asset, price)| (*price, safe_u128_to_i64(asset.amount.u128()).unwrap(), -(query_token_precision(querier, &asset.info).unwrap() as i32)))
@@ -247,7 +247,7 @@ impl Basket {
 
 	/// TODO: Completely deprecate this method's usage in contract.rs and then remove it from here
 	/// It's better to just work with the assets field of a basket directly
-	pub fn get_pools(&self) -> Vec<Asset> {
+	pub fn get_assets(&self) -> Vec<Asset> {
 		let mut v = vec![];
 		for asset in &self.assets {
 			v.push(Asset {

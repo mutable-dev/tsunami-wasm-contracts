@@ -117,24 +117,26 @@ pub fn withdraw_liquidity(
         return Err(ContractError::Unauthorized);
     }
 
-    // Retrieve ask pool
-    let pools = basket.get_pools();
+    // Retrieve ask asset
+    let assets = basket.get_assets();
     let token_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
-    let ask_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
-        .find(|(pool, _price)| ask_asset.info.equal(&pool.info)) {
-            Some((pool, price)) => (pool.clone(), price.clone()),
+    let ask_asset_with_price: (Asset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(asset, _price)| ask_asset.info.equal(&asset.info)) {
+            Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    let ask_pool_value: Uint128 = safe_price_to_Uint128(
+    // perhaps we need to be using our own accounting in the basket asset instead of using
+    // the total amount of the asset held by the contract
+    let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
-            &[(ask_pool.1, safe_u128_to_i64(ask_pool.0.amount.u128())?, token_decimals)],
+            &[(ask_asset_with_price.1, safe_u128_to_i64(ask_asset_with_price.0.amount.u128())?, token_decimals)],
             USD_VALUE_PRECISION
         ).expect("couldn't price ask asset")
     );
 
 
     // Calculate gross asset return
-    let mut refund_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
+    let mut redemption_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
 
 
     // TODO: Calculate fee_bps
@@ -142,23 +144,23 @@ pub fn withdraw_liquidity(
     let fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
-        &vec![ask_pool_value], 
-        &vec![refund_value],
+        &vec![ask_asset_value_in_contract], 
+        &vec![redemption_value],
         &vec![ask_asset.clone()],
         Action::Ask
     )[0];
 
     // Update refund_asset with fee
-    refund_value = refund_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
+    redemption_value = redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
     // milli-USDs per token
-    let invert_price: Price = get_unit_price().div(&ask_pool.1).unwrap();
-    let refund_amount = refund_value / safe_price_to_Uint128(invert_price);
+    let invert_price: Price = get_unit_price().div(&ask_asset_with_price.1).unwrap();
+    let refund_amount = redemption_value / safe_price_to_Uint128(invert_price);
     let refund_asset = Asset {
         amount: refund_amount,
         info: ask_asset.info.clone()
     };
 
-    // Update the pool info
+    // Update the asset info
     let messages: Vec<CosmosMsg> = vec![
         refund_asset
             .clone()
@@ -398,14 +400,14 @@ pub fn swap(
     // Ensure native token was sent
     offer_asset.assert_sent_native_token_balance(&info)?;
 
-    // Load basket singleton, get pools
+    // Load basket singleton, get assets
     let mut basket: Basket = BASKET.load(deps.storage)?;
-    let mut pools: Vec<Asset> = basket.get_pools();
+    let mut assets: Vec<Asset> = basket.get_assets();
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    for (i, pool) in pools.iter_mut().enumerate() {
+    for (i, asset) in assets.iter_mut().enumerate() {
         // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
-        if let AssetInfo::Token { contract_addr, .. } = &pool.info {
+        if let AssetInfo::Token { contract_addr, .. } = &asset.info {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_addr.to_string(),
                 msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
@@ -416,34 +418,39 @@ pub fn swap(
                 funds: vec![],
             }));
         } else {
-            // If the asset is native token, the pool balance is already increased
-            // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            pool.amount = pool.amount.checked_sub(offer_asset.amount)?;
+            // If the asset is native token, the asset's balance is already increased
+            // To calculate the total amount of deposits properly, we should subtract the user deposit amount
+            // from what the contract holds
+            asset.amount = asset.amount.checked_sub(offer_asset.amount)?;
         }
     }
 
-    // Grab relevant asset pools in basket, zipped with price
+    // Grab relevant asset assets in basket, zipped with price
     let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
-    let offer_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
-        .find(|(pool, _price)| offer_asset.info.equal(&pool.info)) {
-            Some((pool, price)) => (pool.clone(), price.clone()),
+    let offer_asset_with_price: (Asset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(asset, _price)| offer_asset.info.equal(&asset.info)) {
+            Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    let offer_pool_value: Uint128 = safe_price_to_Uint128(
+    // perhaps we need to be using our own accounting in the basket asset instead of using
+    // the total amount of the asset held by the contract
+    let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
-            &[(offer_pool.1, safe_u128_to_i64(offer_pool.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_pool.0.info).unwrap() as i32)],
+            &[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset_with_price.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_asset_with_price.0.info).unwrap() as i32)],
             USD_VALUE_PRECISION
         ).unwrap()
     );
     let ask_decimals: i32 = query_token_precision(&deps.querier, &ask_asset)?.try_into().unwrap();
-    let ask_pool: (Asset, Price) = match pools.iter().zip(basket.get_prices(&deps.querier)?)
-        .find(|(pool, _price)| ask_asset.equal(&pool.info)) {
-            Some((pool, price)) => (pool.clone(), price.clone()),
+    let ask_asset_with_price: (Asset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
+        .find(|(asset, _price)| ask_asset.equal(&asset.info)) {
+            Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    let ask_pool_value: Uint128 = safe_price_to_Uint128(
+    // perhaps we need to be using our own accounting in the basket asset instead of using
+    // the total amount of the asset held by the contract
+    let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
-            &[(ask_pool.1, safe_u128_to_i64(ask_pool.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &ask_pool.0.info).unwrap() as i32)],
+            &[(ask_asset_with_price.1, safe_u128_to_i64(ask_asset_with_price.0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &ask_asset_with_price.0.info).unwrap() as i32)],
             USD_VALUE_PRECISION
         ).unwrap()
     );
@@ -451,37 +458,37 @@ pub fn swap(
     // TODO: Compute offer and ask fee 
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
     let offer_decimals = query_token_precision(&deps.querier, &offer_asset.info)? as i32;
-    let offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_pool.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), offer_decimals)], USD_VALUE_PRECISION).unwrap());
+    let user_offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), offer_decimals)], USD_VALUE_PRECISION).unwrap());
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
-        &vec![offer_pool_value], 
-        &vec![offer_value],
+        &vec![offer_asset_value_in_contract], 
+        &vec![user_offer_value],
         &basket.get_basket_assets(&vec![offer_asset.info.clone()]),
         Action::Offer
     )[0];
     let ask_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
-        &vec![ask_pool_value], 
-        &vec![offer_value],
+        &vec![ask_asset_value_in_contract], 
+        &vec![user_offer_value],
         &basket.get_basket_assets(&vec![ask_asset.clone()]),
         Action::Ask
     )[0];
 
     // Calculate post-fee USD value, then convert USD value to number of tokens.
-    let refund_value = offer_value
+    let refund_value = user_offer_value
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_bps - offer_fee_bps,
             BASIS_POINTS_PRECISION
     );
-    let invert_price: Price = get_unit_price().div(&ask_pool.1).unwrap();
+    let invert_price: Price = get_unit_price().div(&offer_asset_with_price.1).unwrap();
     let refund_amount = refund_value / safe_price_to_Uint128(invert_price);
 
 
     // Compute the tax for the receiving asset (if it is a native one)
     let return_asset = Asset {
-        info: ask_pool.0.info.clone(),
+        info: ask_asset_with_price.0.info.clone(),
         amount: refund_amount,
     };
     let receiver = to.unwrap_or_else(|| sender.clone());
@@ -493,14 +500,14 @@ pub fn swap(
     Ok(Response::new()
         .add_messages(
             // 1. send collateral tokens from the contract to a user
-            // 2. send inactive commission fees to the Maker ontract
+            // 2. send inactive commission fees to the Maker contract
             messages,
         )
         .add_attribute("action", "swap")
         .add_attribute("sender", sender.as_str())
         .add_attribute("receiver", receiver.as_str())
         .add_attribute("offer_asset", offer_asset.info.to_string())
-        .add_attribute("ask_asset", ask_pool.0.info.to_string())
+        .add_attribute("ask_asset", ask_asset_with_price.0.info.to_string())
         .add_attribute("offer_amount", offer_asset.amount.to_string())
         .add_attribute("return_amount", refund_value.to_string())
         //.add_attribute("spread_amount", spread_amount.to_string())
@@ -619,14 +626,14 @@ pub fn provide_liquidity(
     }
 
 
-    // Load basket and gather pools
+    // Load basket and gather assets
     let mut basket: Basket = BASKET.load(deps.storage)?;
-    let mut pools = basket.get_pools();
+    let mut assets = basket.get_assets();
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    for (i, pool) in pools.iter_mut().enumerate() {
+    for (i, asset) in assets.iter_mut().enumerate() {
         // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
-        if let AssetInfo::Token { contract_addr, .. } = &pool.info {
+        if let AssetInfo::Token { contract_addr, .. } = &asset.info {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_addr.to_string(),
                 msg: to_binary(&Cw20ExecuteMsg::TransferFrom {
@@ -639,20 +646,20 @@ pub fn provide_liquidity(
         } else {
             // If the asset is native token, the pool balance is already increased
             // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
-            pool.amount = pool.amount.checked_sub(offer_assets[i].amount)?;
+            asset.amount = asset.amount.checked_sub(offer_assets[i].amount)?;
         }
     }
 
-    // Grab relevant asset pools in basket, zipped with price
-    let offer_pools: Vec<(Asset, Price)> = {
+    // Grab relevant asset assets in basket, zipped with price
+    let offer_assets: Vec<(Asset, Price)> = {
         let mut v: Vec<(Asset, Price)>= vec![];
 
         for asset in &offer_assets {
-            v.push(match pools
+            v.push(match assets
                 .iter()
                 .zip(basket.get_prices(&deps.querier)?)
-                .find(|(pool, _price)| asset.info.equal(&pool.info)) {
-                    Some((pool, price)) => (pool.clone(), price.clone()),
+                .find(|(asset, _price)| asset.info.equal(&asset.info)) {
+                    Some((asset, price)) => (asset.clone(), price.clone()),
                     None => return Err(ContractError::AssetNotInBasket)
                 }
             )
@@ -660,13 +667,13 @@ pub fn provide_liquidity(
         v
     };
 
-    // Price of one token --> Value of pools
-    let offer_pool_values: Vec<Uint128> = offer_pools
+    // Price of one token --> Value of assets
+    let offer_asset_values: Vec<Uint128> = offer_assets
         .iter()
-        .map(|(pool, price)| 
+        .map(|(asset, price)| 
             safe_price_to_Uint128(
                     Price::price_basket(
-                    &[(*price, safe_u128_to_i64(pool.amount.u128()).unwrap(), query_token_precision(&deps.querier, &pool.info).unwrap() as i32)],
+                    &[(*price, safe_u128_to_i64(asset.amount.u128()).unwrap(), query_token_precision(&deps.querier, &asset.info).unwrap() as i32)],
                     USD_VALUE_PRECISION
                 ).unwrap()
             )
@@ -675,15 +682,15 @@ pub fn provide_liquidity(
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
 
     // Value of user deposits
-    let user_deposit_values: Vec<Uint128> = offer_pools
+    let user_deposit_values: Vec<Uint128> = offer_assets
         .iter()
         .enumerate()
-        .map(|(i, (pool, price))| 
+        .map(|(i, (asset, price))| 
             safe_price_to_Uint128(
                     {
-                        assert!(offer_assets[i].info.equal(&pool.info));
+                        assert!(offer_assets[i].0.info.equal(&asset.info));
                         Price::price_basket(
-                            &[(*price, safe_u128_to_i64(offer_assets[i].amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_assets[i].info).unwrap() as i32)],
+                            &[(*price, safe_u128_to_i64(offer_assets[i].0.amount.u128()).unwrap(), query_token_precision(&deps.querier, &offer_assets[i].0.info).unwrap() as i32)],
                             USD_VALUE_PRECISION
                     ).unwrap()
                 }
@@ -714,7 +721,7 @@ pub fn provide_liquidity(
 
         // TODO: do we need to check for slippage for any reason if we use oracles? Maybe if user doesn't want to pay max bps fee?
         // Assert slippage tolerance
-        // assert_slippage_tolerance(slippage_tolerance, &deposits, &pools)?;
+        // assert_slippage_tolerance(slippage_tolerance, &deposits, &assets)?;
 
         // exchange rate is (lp supply) / (aum)
         // here we value * rate = value * lp supply / aum, safely
@@ -725,9 +732,9 @@ pub fn provide_liquidity(
         let fee_bps: Vec<Uint128> = calculate_fee_basis_points(
             initial_aum_value, 
             &basket, 
-            &offer_pool_values, 
+            &offer_asset_values, 
             &user_deposit_values,
-            &basket.get_basket_assets(&offer_assets.iter().map(|x| x.info.clone()).collect()),
+            &basket.get_basket_assets(&offer_assets.iter().map(|x| x.0.info.clone()).collect()),
             Action::Offer
         );
         let fees: Vec<Uint128> = user_deposit_values

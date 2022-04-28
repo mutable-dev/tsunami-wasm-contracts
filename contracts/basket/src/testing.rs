@@ -20,9 +20,8 @@ use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR, MockQuerier
 use cosmwasm_std::{
     to_binary,  Addr,
     ReplyOn, SubMsg, Uint128,
-    WasmMsg, 
-    WasmMsg, BalanceResponse, from_binary, BankQuery, QueryRequest, Coin, QuerierWrapper
-    StdError::GenericErr,
+    WasmMsg, BalanceResponse, from_binary, BankQuery, QueryRequest, Coin, QuerierWrapper,
+    StdError::GenericErr
 };
 use cw20::{ MinterResponse};
 
@@ -524,7 +523,7 @@ fn single_asset_deposit() {
     let depositor = mock_info("first_depositor", &coins(10, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(10) };
     let deposit_msg = ExecuteMsg::DepositLiquidity { 
-        asset: deposit_asset,
+        assets: vec!(deposit_asset),
         slippage_tolerance: None,
         receiver: None
     };
@@ -699,14 +698,14 @@ fn multiple_deposits() {
     let deposit_asset2 = Asset { info: luna_info.clone(), amount: Uint128::new(luna_amount2) };
 
     let deposit_msg1 = ExecuteMsg::DepositLiquidity { 
-        asset: deposit_asset1,
+        assets: vec!(deposit_asset1),
         slippage_tolerance: None, 
         receiver: None
     };
     let _deposit_res1 = execute(deps.as_mut(), mock_env(), depositor1, deposit_msg1).unwrap();
     
     let deposit_msg2 = ExecuteMsg::DepositLiquidity { 
-        asset: deposit_asset2,
+        assets: vec!(deposit_asset2),
         slippage_tolerance: None, 
         receiver: None
     };
@@ -794,7 +793,7 @@ fn try_deposit_insufficient_funds() {
     let depositor = mock_info("first_depositor", &coins(luna_amount - 5, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(10) };
     let deposit_msg = ExecuteMsg::DepositLiquidity { 
-        asset: deposit_asset,
+        assets: vec!(deposit_asset),
         slippage_tolerance: None, 
         receiver: None
     };
@@ -840,7 +839,7 @@ fn try_deposit_exceeding_limit() {
     let depositor = mock_info("first_depositor", &coins(11, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(11) };
     let deposit_msg = ExecuteMsg::DepositLiquidity { 
-        asset: deposit_asset,
+        assets: vec!(deposit_asset),
         slippage_tolerance: None, 
         receiver: None
     };
@@ -886,7 +885,7 @@ fn try_deposit_unwhitelisted_asset() {
     let depositor = mock_info("first_depositor", &coins(1, "random_asset"));
     let deposit_asset = Asset { info: random_asset_info.clone(), amount: Uint128::new(1) };
     let deposit_msg = ExecuteMsg::DepositLiquidity { 
-        asset: deposit_asset,
+        assets: vec!(deposit_asset),
         slippage_tolerance: None, 
         receiver: None
     };
