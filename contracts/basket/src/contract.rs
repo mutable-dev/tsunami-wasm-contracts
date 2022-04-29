@@ -119,7 +119,7 @@ pub fn withdraw_liquidity(
 
     // Retrieve ask asset
     let assets = basket.assets.clone();
-    let token_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
+    let ask_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
     let ask_asset_with_price: (BasketAsset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.info.equal(&asset.info)) {
             Some((asset, price)) => (asset.clone(), price.clone()),
@@ -132,7 +132,7 @@ pub fn withdraw_liquidity(
                 ask_asset_with_price.1,
                 safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())? +
                 safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?, 
-                -token_decimals
+                -ask_decimals
             )],
             USD_VALUE_PRECISION
         ).expect("couldn't price ask asset")
