@@ -128,70 +128,47 @@ impl WasmMockQuerier {
         //             panic!("DO NOT ENTER HERE")
         //         }
         //     }
-            // QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
-            //     if contract_addr == "factory" {
-            //         match from_binary(&msg).unwrap() {
-            //             FeeInfo { .. } => SystemResult::Ok(
-            //                 to_binary(&FeeInfoResponse {
-            //                     fee_address: Some(Addr::unchecked("fee_address")),
-            //                     total_fee_bps: 30,
-            //                     maker_fee_bps: 1660,
-            //                 })
-            //                 .into(),
-            //             ),
-            //             _ => panic!("DO NOT ENTER HERE"),
-            //         }
-            //     } else {
-            //         match from_binary(&msg).unwrap() {
-            //             Cw20QueryMsg::TokenInfo {} => {
-            //                 let balances: &HashMap<String, Uint128> =
-            //                     match self.token_querier.balances.get(contract_addr) {
-            //                         Some(balances) => balances,
-            //                         None => {
-            //                             return SystemResult::Err(SystemError::Unknown {});
-            //                         }
-            //                     };
+            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
+                if contract_addr == "factory" {
+                    panic!("DO NOT ENTER HERE");
+                } else {
+                    match from_binary(&msg).unwrap() {
+                        Cw20QueryMsg::TokenInfo {} => {
+                            let mut total_supply = Uint128::zero();
+                            SystemResult::Ok(
+                                to_binary(&TokenInfoResponse {
+                                    name: "lp".to_string(),
+                                    symbol: "lp".to_string(),
+                                    decimals: 6,
+                                    total_supply: total_supply,
+                                })
+                                .into(),
+                            )
+                        }
+                        Cw20QueryMsg::Balance { address } => {
+                            let balances: &HashMap<String, Uint128> =
+                                match self.token_querier.balances.get(contract_addr) {
+                                    Some(balances) => balances,
+                                    None => {
+                                        return SystemResult::Err(SystemError::Unknown {});
+                                    }
+                                };
 
-            //                 let mut total_supply = Uint128::zero();
+                            let balance = match balances.get(&address) {
+                                Some(v) => v,
+                                None => {
+                                    return SystemResult::Err(SystemError::Unknown {});
+                                }
+                            };
 
-            //                 for balance in balances {
-            //                     total_supply += *balance.1;
-            //                 }
-
-            //                 SystemResult::Ok(
-            //                     to_binary(&TokenInfoResponse {
-            //                         name: "mAPPL".to_string(),
-            //                         symbol: "mAPPL".to_string(),
-            //                         decimals: 6,
-            //                         total_supply: total_supply,
-            //                     })
-            //                     .into(),
-            //                 )
-            //             }
-            //             Cw20QueryMsg::Balance { address } => {
-            //                 let balances: &HashMap<String, Uint128> =
-            //                     match self.token_querier.balances.get(contract_addr) {
-            //                         Some(balances) => balances,
-            //                         None => {
-            //                             return SystemResult::Err(SystemError::Unknown {});
-            //                         }
-            //                     };
-
-            //                 let balance = match balances.get(&address) {
-            //                     Some(v) => v,
-            //                     None => {
-            //                         return SystemResult::Err(SystemError::Unknown {});
-            //                     }
-            //                 };
-
-            //                 SystemResult::Ok(
-            //                     to_binary(&BalanceResponse { balance: *balance }).into(),
-            //                 )
-            //             }
-            //             _ => panic!("DO NOT ENTER HERE"),
-            //         }
-            //     }
-            // }
+                            SystemResult::Ok(
+                                to_binary(&BalanceResponse { balance: *balance }).into(),
+                            )
+                        }
+                        _ => panic!("DO NOT ENTER HERE"),
+                    }
+                }
+            }
             _ => self.base.handle_query(request),
         }
     }
