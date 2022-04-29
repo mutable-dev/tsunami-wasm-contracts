@@ -2,7 +2,7 @@ use crate::{
     error::ContractError,
     msg::*,
     asset::{AssetInfo, Asset, addr_validate_to_lower},
-    state::{Basket, BasketAsset, BASKET},
+    state::{Basket, BasketAsset, BASKET, ToAssetInfo},
     querier::{query_supply, query_token_precision},
 };
 use cosmwasm_std::{
