@@ -670,6 +670,7 @@ pub fn provide_liquidity(
     };
 
     // Price of one token --> Value of assets
+    let offer_decimals: i32 = query_token_precision(&deps.querier, &basket_asset.info).unwrap() as i32;
     let offer_asset_values: Vec<Uint128> = offer_assets_with_price
         .iter()
         .map(|(basket_asset, price)| 
@@ -679,7 +680,7 @@ pub fn provide_liquidity(
                         *price, 
                         safe_u128_to_i64(basket_asset.available_reserves.u128()).unwrap() +
                             safe_u128_to_i64(basket_asset.occupied_reserves.u128()).unwrap(), 
-                        query_token_precision(&deps.querier, &basket_asset.info).unwrap() as i32
+                        -offer_decimals
                     )],
                     USD_VALUE_PRECISION
                 ).unwrap()
