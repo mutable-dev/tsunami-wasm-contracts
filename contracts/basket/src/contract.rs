@@ -31,6 +31,7 @@ const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 
 // Calculate USD value of asset down to this precision
 pub const USD_VALUE_PRECISION: i32 = -6;
+pub const LP_DECIMALS: u8 = 9;
 
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -220,7 +221,7 @@ fn instantiate_lp(
             msg: to_binary(&InstantiateLpMsg {
                 name: token_name,
                 symbol: "NLP".to_string(),
-                decimals: 6,
+                decimals: LP_DECIMALS,
                 initial_balances: vec![],
                 mint: Some(MinterResponse {
                     minter: env.contract.address.to_string(),
