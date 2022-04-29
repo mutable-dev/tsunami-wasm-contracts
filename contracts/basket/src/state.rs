@@ -149,6 +149,46 @@ impl BasketAsset {
 	}
 }
 
+pub trait ToAssetInfo {
+	fn to_asset_info(&self) -> Vec<AssetInfo>;
+}
+
+impl ToAssetInfo for Vec<BasketAsset> {
+	fn to_asset_info(&self) -> Vec<AssetInfo> {
+		let mut v: Vec<AssetInfo> = vec![];
+		for asset in self.iter() {
+			v.push(
+				self
+					.iter()
+					.find(|basket_asset| basket_asset.info.equal(&asset.info))
+					.expect("an asset was not found in the basket")
+					.info
+					.clone()
+			)
+		}
+		v
+	}
+}
+
+
+impl ToAssetInfo for Vec<Asset> {
+	fn to_asset_info(&self) -> Vec<AssetInfo> {
+		let mut v: Vec<AssetInfo> = vec![];
+		for asset in self.iter() {
+			v.push(
+				self
+					.iter()
+					.find(|basket_asset| basket_asset.info.equal(&asset.info))
+					.expect("an asset was not found in the basket")
+					.info
+					.clone()
+			)
+		}
+		v
+	}
+}
+
+
 pub struct AumResult {
 	pub aum: Uint128,
 	pub price: i64,
