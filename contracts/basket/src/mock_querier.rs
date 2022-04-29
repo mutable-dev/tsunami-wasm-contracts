@@ -6,7 +6,6 @@ use cosmwasm_std::{
 use std::collections::HashMap;
 use cw20::{BalanceResponse, Cw20QueryMsg, TokenInfoResponse};
 use terra_cosmwasm::TerraQueryWrapper;
-use crate::querier::query_token_precision;
 
 pub const MOCK_LP_DECIMALS: u8 = 6;
 
@@ -91,8 +90,6 @@ impl WasmMockQuerier {
                 {
                     match from_binary(&msg).unwrap() {
                         Cw20QueryMsg::TokenInfo {} => {
-                            println!("querying {}", contract_addr.clone());
-                            println!("balances = {:?}", self.token_querier.balances);
                             let balances: &HashMap<String, Uint128> =
                                 match self.token_querier.balances.get(contract_addr) {
                                     Some(balances) => balances,
