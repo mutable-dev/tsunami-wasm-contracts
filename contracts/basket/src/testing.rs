@@ -9,7 +9,7 @@ use crate::mock_querier::mock_dependencies;
 use crate::state::OracleInterface;
 use crate::{
     msg::*,
-    state::{Basket, BasketAsset, TickerData},
+    state::{Basket, BasketAsset, TickerData, BASKET},
     asset::{Asset, AssetInfo},
 };
 
@@ -530,7 +530,6 @@ fn single_asset_deposit() {
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked("lp-token");
     BASKET.save(deps.as_mut().storage, &basket);
-    println!("{}", basket.assets[0].available_reserves);
 
     let depositor = mock_info("first_depositor", &coins(10, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(10) };
@@ -541,7 +540,10 @@ fn single_asset_deposit() {
     };
 
     let deposit_res = execute(deps.as_mut(), mock_env(), depositor, deposit_msg).unwrap();
-    assert_eq!(deposit_res.messages.len(), 1);
+   // assert_eq!(deposit_res.messages.len(), 1);
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(basket.assets[0].available_reserves, Uint128::new(10));
 }
 
 #[ignore = "Multi-asset deposits are not yet implemented"]
@@ -576,7 +578,6 @@ fn multi_asset_deposit() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].available_reserves);
 
     let luna_deposit_amount = 10;
     let ust_deposit_amount = 10;
@@ -685,7 +686,6 @@ fn multiple_deposits() {
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked("lp-token");
     BASKET.save(deps.as_mut().storage, &basket);
-    println!("{}", basket.assets[0].available_reserves);
 
     let luna_amount1 = 10;
     let luna_amount2 = 10;
@@ -741,7 +741,6 @@ fn try_deposit_insufficient_funds() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].available_reserves);
 
     let luna_amount = 10;
 
@@ -791,7 +790,6 @@ fn try_deposit_exceeding_limit() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].available_reserves);
 
     let depositor = mock_info("first_depositor", &coins(11, "luna"));
     let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(11) };
@@ -837,7 +835,6 @@ fn try_deposit_unwhitelisted_asset() {
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    println!("{}", basket.assets[0].available_reserves);
 
     let random_asset_info = AssetInfo::NativeToken{ denom: "random_asset".to_string() };
     let depositor = mock_info("first_depositor", &coins(1, "random_asset"));
