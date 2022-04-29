@@ -747,7 +747,7 @@ pub fn provide_liquidity(
             &basket, 
             &offer_asset_values, 
             &user_deposit_values,
-            &basket.assets,
+            &basket.match_basket_assets(&offer_assets.to_asset_info()),
             Action::Offer
         );
         let fees: Vec<Uint128> = user_deposit_values

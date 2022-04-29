@@ -224,7 +224,7 @@ impl Basket {
 		total_weights
 	}
 
-	pub fn get_basket_assets(&self, asset_infos: &Vec<AssetInfo>) -> Vec<BasketAsset> {
+	pub fn match_basket_assets(&self, asset_infos: &Vec<AssetInfo>) -> Vec<BasketAsset> {
 		let mut v: Vec<BasketAsset> = vec![];
 		for asset in asset_infos.iter() {
 			v.push(
