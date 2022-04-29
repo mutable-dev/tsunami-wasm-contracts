@@ -438,7 +438,7 @@ pub fn swap(
                 offer_asset_with_price.1, 
                 safe_u128_to_i64(offer_asset_with_price.0.available_reserves.u128())? +
                 safe_u128_to_i64(offer_asset_with_price.0.occupied_reserves.u128())?, 
-                query_token_precision(&deps.querier, &offer_asset_with_price.0.info).unwrap() as i32
+                -offer_decimals
             )],
             USD_VALUE_PRECISION
         ).unwrap()
@@ -456,16 +456,15 @@ pub fn swap(
                 ask_asset_with_price.1, 
                 safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())? +
                 safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?, 
-                query_token_precision(&deps.querier, &ask_asset_with_price.0.info).unwrap() as i32
+                -ask_decimals
             )],
             USD_VALUE_PRECISION
         ).unwrap()
     );
 
-    // TODO: Compute offer and ask fee 
+    // TODO: Compute offer value and ask fee 
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
-    let offer_decimals = query_token_precision(&deps.querier, &offer_asset.info)? as i32;
-    let user_offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), offer_decimals)], USD_VALUE_PRECISION).unwrap());
+    let user_offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), -offer_decimals)], USD_VALUE_PRECISION).unwrap());
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
