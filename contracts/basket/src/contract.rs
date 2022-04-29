@@ -132,7 +132,7 @@ pub fn withdraw_liquidity(
                 ask_asset_with_price.1,
                 safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())? +
                 safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?, 
-                token_decimals
+                -token_decimals
             )],
             USD_VALUE_PRECISION
         ).expect("couldn't price ask asset")
