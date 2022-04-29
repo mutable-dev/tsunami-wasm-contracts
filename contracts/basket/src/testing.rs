@@ -489,6 +489,7 @@ fn imbalanced_basket_big_double_balanced_add() {
 /// Instantiate an LP with two assets and make an initial deposit with just one asset
 #[test]
 fn single_asset_deposit() {
+    use crate::state::BASKET;
     let mut deps = mock_dependencies(&[]);
     deps.querier.with_token_balances(&[
         (
@@ -528,7 +529,7 @@ fn single_asset_deposit() {
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked("lp-token");
-    crate::state::BASKET.save(deps.as_mut().storage, &basket);
+    BASKET.save(deps.as_mut().storage, &basket);
     println!("{}", basket.assets[0].available_reserves);
 
     let depositor = mock_info("first_depositor", &coins(10, "luna"));
@@ -644,6 +645,7 @@ fn multi_asset_deposit() {
 /// For later: check that the correct amount of fees are taken
 #[test]
 fn multiple_deposits() {
+    use crate::state::BASKET;
     let mut deps = mock_dependencies(&[]);
     deps.querier.with_token_balances(&[
         (
@@ -682,7 +684,7 @@ fn multiple_deposits() {
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked("lp-token");
-    crate::state::BASKET.save(deps.as_mut().storage, &basket);
+    BASKET.save(deps.as_mut().storage, &basket);
     println!("{}", basket.assets[0].available_reserves);
 
     let luna_amount1 = 10;
