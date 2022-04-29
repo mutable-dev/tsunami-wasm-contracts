@@ -621,7 +621,6 @@ pub fn provide_liquidity(
     slippage_tolerance: Option<Decimal>,
     receiver: Option<String>,
 ) -> Result<Response, ContractError> {
-
     
     for asset in &offer_assets {
         // Check assets for valid formatting

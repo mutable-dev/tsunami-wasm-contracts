@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 
-use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Uint256, StdResult, Querier};
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, StdResult};
 use std::convert::{TryFrom, TryInto};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
@@ -212,7 +212,7 @@ impl Basket {
 			liquidation_fee_usd: msg.liquidation_fee_usd,
 			min_profit_time: msg.min_profit_time,
 			admin: msg.admin.clone(),
-			lp_token_address: Addr::unchecked(""), // This is fixed in reply
+			lp_token_address: Addr::unchecked(""),
 		}
 	}
 
