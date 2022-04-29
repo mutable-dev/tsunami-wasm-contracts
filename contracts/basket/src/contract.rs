@@ -690,6 +690,7 @@ pub fn provide_liquidity(
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
 
     // Value of user deposits
+    let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset_with_price.info).unwrap() as i32;
     let user_deposit_values: Vec<Uint128> = offer_assets_with_price
         .iter()
         .enumerate()
@@ -703,7 +704,7 @@ pub fn provide_liquidity(
                                 safe_u128_to_i64(
                                     offer_asset_with_price.available_reserves.u128() + offer_asset_with_price.occupied_reserves.u128()
                                 ).unwrap(),
-                                query_token_precision(&deps.querier, &offer_asset_with_price.info).unwrap() as i32
+                                -offer_decimals
                             )],
                             USD_VALUE_PRECISION
                     ).unwrap()
