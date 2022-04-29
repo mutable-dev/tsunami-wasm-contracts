@@ -470,7 +470,7 @@ pub fn swap(
         &basket, 
         &vec![offer_asset_value_in_contract], 
         &vec![user_offer_value],
-        &basket.get_basket_assets(&vec![offer_asset.info.clone()]),
+        &basket.match_basket_assets(&vec![offer_asset.info.clone()]),
         Action::Offer
     )[0];
     let ask_fee_bps: Uint128 = calculate_fee_basis_points(
@@ -478,7 +478,7 @@ pub fn swap(
         &basket, 
         &vec![ask_asset_value_in_contract], 
         &vec![user_offer_value],
-        &basket.get_basket_assets(&vec![ask_asset.clone()]),
+        &basket.match_basket_assets(&vec![ask_asset.clone()]),
         Action::Ask
     )[0];
 
