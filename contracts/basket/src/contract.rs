@@ -483,6 +483,7 @@ pub fn swap(
         Action::Ask
     )[0];
 
+
     // Calculate post-fee USD value, then convert USD value to number of tokens.
     let refund_value = user_offer_value
         .multiply_ratio(
@@ -502,6 +503,15 @@ pub fn swap(
     let mut messages: Vec<CosmosMsg> =
         vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
 
+    match basket.assets.iter_mut().find(|asset| offer_asset.info.equal(&asset.info)) {
+        Some(offer_basket_asset) => { offer_basket_asset.available_reserves += offer_asset.amount },
+        None => {}
+    }
+
+    match basket.assets.iter_mut().find(|asset| ask_asset.equal(&asset.info)) {
+        Some(offer_asset) => { offer_asset.available_reserves -= refund_amount },
+        None => {}
+    }
 
     // 
     Ok(Response::new()
@@ -720,10 +730,10 @@ pub fn provide_liquidity(
     let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
     // Retrieve LP token supply
-    let total_share: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
+    let lp_supply: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
 
-    // Calculate share
-    let share: Uint128 = if total_share.is_zero() {
+    // Calculate share -  What exactly is share?
+    let tokens_to_mint: Uint128 = if lp_supply.is_zero() {
 
         // Handle deposit into empty basket at 1:1 USD_VALUE_PRECISION mint. First deposit gets zero fees
         total_user_deposit_value
@@ -739,7 +749,7 @@ pub fn provide_liquidity(
         // exchange rate is (lp supply) / (aum)
         // here we value * rate = value * lp supply / aum, safely
         // then, we reduce fees by doing gross * ( 10000 - deposit_fee ) / 10000
-        let pre_fee: Uint128 = total_user_deposit_value.multiply_ratio(total_share, initial_aum_value);
+        let pre_fee: Uint128 = total_user_deposit_value.multiply_ratio(lp_supply, initial_aum_value);
 
         // Gather bps for all fees
         let fee_bps: Vec<Uint128> = calculate_fee_basis_points(
@@ -764,6 +774,15 @@ pub fn provide_liquidity(
     // Also I think first depositor is charged no fee if we do it here because they just get minted less but they own 100% of lp token.
     // Maybe we take difference and mint it to some fee wallet?
 
+    offer_assets.iter().for_each(|offer_asset| match basket.assets.iter_mut()
+    .find(|asset| offer_asset.info.equal(&asset.info)) {
+            Some(offer_basket_asset) => { 
+                offer_basket_asset.available_reserves += offer_asset.amount 
+            },
+            None => {},
+        });
+
+    BASKET.save(deps.storage, &basket)?;
 
 
     // Mint LP tokens for the sender or for the receiver (if set)
@@ -773,7 +792,7 @@ pub fn provide_liquidity(
         &basket,
         env.clone(),
         validate_addr(deps.api, &receiver)?,
-        share,
+        tokens_to_mint,
     ).map_err(|_| ContractError::LpMintFailed)?);
 
     // Return response with attributes
@@ -782,7 +801,7 @@ pub fn provide_liquidity(
         attr("sender", info.sender.as_str()),
         attr("receiver", receiver.as_str()),
         attr("offer_asset", format!("{:?}", &offer_assets)),
-        attr("share", share.to_string()),
+        attr("tokens_to_mint", tokens_to_mint.to_string()),
     ]))
 }
 
