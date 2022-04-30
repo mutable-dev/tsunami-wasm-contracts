@@ -463,6 +463,7 @@ pub fn swap(
         ).unwrap()
     );
 
+    println!("init value aum");
     // TODO: Compute offer value and ask fee 
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
     let user_offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), -offer_decimals)], USD_VALUE_PRECISION).unwrap());
@@ -484,6 +485,7 @@ pub fn swap(
     )[0];
 
 
+    println!("refund value");
     // Calculate post-fee USD value, then convert USD value to number of tokens.
     let refund_value = user_offer_value
         .multiply_ratio(
@@ -575,6 +577,8 @@ pub fn calculate_fee_basis_points(
         let initial_reserve_value = initial_reserve_values[i].clone();
         let next_reserve_usd_value = next_reserve_usd_values[i].clone();
 
+        println!("initial_target_lp_usd_value: {}", initial_reserve_value);
+        println!("next_target_lp_usd_value: {}", next_reserve_usd_value);
         // Compute target value based on weight, so that we may compare to the updated value
         let initial_target_lp_usd_value: Uint128 = initial_aum_value
             .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());

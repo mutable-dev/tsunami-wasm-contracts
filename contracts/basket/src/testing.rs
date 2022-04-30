@@ -544,6 +544,18 @@ fn single_asset_deposit() {
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(basket.assets[0].available_reserves, Uint128::new(10));
+
+    let swap = ExecuteMsg::Swap { 
+        sender: Addr::unchecked(sender),
+        offer_asset: Asset { info: ust_info.clone(), amount: Uint128::new(10) },
+        ask_asset: luna_info.clone(),
+        to: None,
+        max_spread: None,
+        belief_price: None,
+    };
+        
+    let swapper = mock_info("first_depositor", &coins(10, "ust"));
+    let swap_res = execute(deps.as_mut(), mock_env(), swapper, swap).unwrap();
 }
 
 #[ignore = "Multi-asset deposits are not yet implemented"]
