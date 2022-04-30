@@ -245,10 +245,8 @@ impl Basket {
 		querier: &QuerierWrapper,
 	) -> Result<Price, ContractError> {
 
-		println!("calculate_aum");
 		// Build amounts: input to price_basket
 		let tokens: Vec<(BasketAsset, Price)> = self.assets.iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
-		tokens.iter().for_each(|token| { println!("token.0: {:?}", token.0) });
 		// Following pyth naming convention of amount, but does not make much sense
 		let amounts: &[(Price, i64, i32)] = &tokens
 			.iter()
@@ -261,7 +259,6 @@ impl Basket {
 				-(query_token_precision(querier, &basket_asset.info).unwrap() as i32)))
 			.collect::<Vec<(Price, i64, i32)>>();
 
-		println!("amounts: {:?}", amounts);
 		// Construct aum Price result
 		Ok(Price::price_basket(
 			amounts, 

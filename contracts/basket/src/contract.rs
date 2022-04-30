@@ -204,8 +204,8 @@ fn validate_addr(
 /// Produces unit price of USD, in units of `USD_VALUE_PRECISION`
 pub fn get_unit_price() -> Price {
     Price {
-        price: 10_i64.pow(-USD_VALUE_PRECISION as u32),
-        expo: 0,
+        price: 1,//10_i64.pow(-USD_VALUE_PRECISION as u32),
+        expo: USD_VALUE_PRECISION,
         conf: 0
     }
 }
@@ -220,6 +220,7 @@ fn instantiate_lp(
             code_id: msg.token_code_id,
             msg: to_binary(&InstantiateLpMsg {
                 name: token_name,
+                // TODO: replace with some generator, or perhaps with some admin-specified value in instantiate msg
                 symbol: "TLP".to_string(),
                 decimals: LP_DECIMALS,
                 initial_balances: vec![],
@@ -433,7 +434,6 @@ pub fn swap(
             Some((asset, price)) => ( asset.clone(),  price.clone(), offer_asset.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    println!("{:?}", offer_asset_with_price);
     // Determine the amount of an asset held in the contract based on our internal accounting
     let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -453,7 +453,6 @@ pub fn swap(
             None => return Err(ContractError::AssetNotInBasket)
     };
     
-    println!("{:?}", ask_asset_with_price);
     // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -501,33 +500,26 @@ pub fn swap(
     )[0];
 
 
-    println!("refund value inputs BASIS POINTS PRECISION: {:?} afbps {:?} {:?}", BASIS_POINTS_PRECISION, offer_fee_bps, ask_fee_bps);
+    println!("refund value inputs: BASIS POINTS PRECISION {:?}; ofbps {:?}; afbps {:?}", BASIS_POINTS_PRECISION, offer_fee_bps, ask_fee_bps);
     // Calculate post-fee USD value, then convert USD value to number of tokens.
     let refund_value = user_offer_value
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_bps - offer_fee_bps,
             BASIS_POINTS_PRECISION
     );
-    println!("refund value: {}", refund_value);
-    let invert_price: Price = get_unit_price().div(&ask_asset_with_price.1).unwrap().scale_to_exponent(-ask_decimals).unwrap();
-    println!("invert_price: {:?}", invert_price);
-    let refund_amount = refund_value / {
-        // Deal with negative exponent
-        let expo = invert_price.expo.abs() as u32;
-        println!("amount, expo, 10^expo, result = {}, {}, {}, {}", invert_price.price, expo, 10_u32.pow(expo),
-        Uint128::from(invert_price.price as u128).multiply_ratio(1_u32, 10_u32.pow(expo)));
-        Uint128::from(invert_price.price as u128).multiply_ratio(1_u32, 10_u32.pow(expo))
-    };
-    println!("after refund_amount: {}", refund_amount);
-    println!("invert_price: {:?}", invert_price);
+    // Get value of ask per unit usd, e.g. microUSD
+    let ask_per_unit_usd = ask_asset_with_price.1.price as u128;
+    // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
+    let refund_amount = refund_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
+    println!("refund_amount: {}", refund_amount);
 
-    // Compute the tax for the receiving asset (if it is a native one)
+    // Construct asset type and convert to message to `to` or `sender`
     let return_asset = Asset {
         info: ask_asset_with_price.0.info.clone(),
         amount: refund_amount,
     };
     let receiver = to.unwrap_or_else(|| sender.clone());
-    let mut messages: Vec<CosmosMsg> =
+    let messages: Vec<CosmosMsg> =
         vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
 
     match basket.assets.iter_mut().find(|asset| offer_asset.info.equal(&asset.info)) {
@@ -539,6 +531,9 @@ pub fn swap(
         Some(offer_asset) => { offer_asset.available_reserves -= refund_amount },
         None => {}
     }
+
+    // Save state
+    BASKET.save(deps.storage, &basket)?;
 
     // 
     Ok(Response::new()
@@ -554,9 +549,8 @@ pub fn swap(
         .add_attribute("ask_asset", ask_asset_with_price.0.info.to_string())
         .add_attribute("offer_amount", offer_asset.amount.to_string())
         .add_attribute("return_amount", refund_value.to_string())
-        //.add_attribute("spread_amount", spread_amount.to_string())
-        //.add_attribute("commission_amount", commission_amount.to_string())
-        //.add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
+        .add_attribute("offer_bps", offer_fee_bps.to_string())
+        .add_attribute("ask_bps", ask_fee_bps.to_string())
     )
 }
 
