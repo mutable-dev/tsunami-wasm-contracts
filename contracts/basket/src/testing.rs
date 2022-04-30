@@ -2,7 +2,7 @@ use crate::contract::{
     instantiate,
     query_basket,
     calculate_fee_basis_points,
-    Action, execute,
+    Action, execute, LP_DECIMALS
  };
 use crate::error::ContractError;
 use crate::mock_querier::mock_dependencies;
@@ -89,7 +89,7 @@ fn proper_initialization() {
                 msg: to_binary(&InstantiateLpMsg {
                     name: "blue chip basket-LP".to_string(),
                     symbol: "NLP".to_string(),
-                    decimals: 6,
+                    decimals: LP_DECIMALS,
                     initial_balances: vec![],
                     mint: Some(MinterResponse {
                         minter: MOCK_CONTRACT_ADDR.to_string(),
@@ -489,7 +489,17 @@ fn imbalanced_basket_big_double_balanced_add() {
 /// Instantiate an LP with two assets and make an initial deposit with just one asset
 #[test]
 fn single_asset_deposit() {
+    use crate::state::BASKET;
     let mut deps = mock_dependencies(&[]);
+    deps.querier.with_token_balances(&[
+        (
+            &String::from("lp-token"),
+            &[(
+                &String::from(MOCK_CONTRACT_ADDR),
+                &Uint128::from(0_u32),
+            )],
+        ),
+    ]);
 
     // luna and ust info
     let luna_info = AssetInfo::NativeToken{ denom: "luna".to_string() };
@@ -514,9 +524,12 @@ fn single_asset_deposit() {
 
     let sender = "addr0000";
     let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let env = mock_env();
+    let _res = instantiate(deps.as_mut(), env, info, msg).unwrap();
 
-    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
+    basket.lp_token_address = Addr::unchecked("lp-token");
+    BASKET.save(deps.as_mut().storage, &basket);
     println!("{}", basket.assets[0].available_reserves);
 
     let depositor = mock_info("first_depositor", &coins(10, "luna"));
@@ -632,7 +645,17 @@ fn multi_asset_deposit() {
 /// For later: check that the correct amount of fees are taken
 #[test]
 fn multiple_deposits() {
+    use crate::state::BASKET;
     let mut deps = mock_dependencies(&[]);
+    deps.querier.with_token_balances(&[
+        (
+            &String::from("lp-token"),
+            &[(
+                &String::from(MOCK_CONTRACT_ADDR),
+                &Uint128::from(0_u32),
+            )],
+        ),
+    ]);
 
     // luna and ust info
     let luna_info = AssetInfo::NativeToken{ denom: "luna".to_string() };
@@ -659,7 +682,9 @@ fn multiple_deposits() {
     let info = mock_info(sender, &[]);
     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
+    basket.lp_token_address = Addr::unchecked("lp-token");
+    BASKET.save(deps.as_mut().storage, &basket);
     println!("{}", basket.assets[0].available_reserves);
 
     let luna_amount1 = 10;
