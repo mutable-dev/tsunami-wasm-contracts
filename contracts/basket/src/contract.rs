@@ -220,7 +220,7 @@ fn instantiate_lp(
             code_id: msg.token_code_id,
             msg: to_binary(&InstantiateLpMsg {
                 name: token_name,
-                symbol: "NLP".to_string(),
+                symbol: "TLP".to_string(),
                 decimals: LP_DECIMALS,
                 initial_balances: vec![],
                 mint: Some(MinterResponse {
@@ -426,12 +426,14 @@ pub fn swap(
 
     // Grab relevant asset assets in basket, zipped with price
     let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
+    println!("offer_decimals: {}", offer_decimals);
     let offer_asset_with_price: (BasketAsset, Price, Asset) = match basket.assets.iter()
         .zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| offer_asset.info.equal(&asset.info)) {
             Some((asset, price)) => ( asset.clone(),  price.clone(), offer_asset.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
+    println!("{:?}", offer_asset_with_price);
     // Determine the amount of an asset held in the contract based on our internal accounting
     let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -450,6 +452,8 @@ pub fn swap(
             Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
+    
+    println!("{:?}", ask_asset_with_price);
     // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -463,10 +467,22 @@ pub fn swap(
         ).unwrap()
     );
 
-    println!("init value aum");
     // TODO: Compute offer value and ask fee 
-    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
-    let user_offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), -offer_decimals)], USD_VALUE_PRECISION).unwrap());
+    // let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
+    let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.price as u128);
+    let price_basket = Price::price_basket(&[(
+        offer_asset_with_price.1, 
+        safe_u128_to_i64(offer_asset.amount.u128()).unwrap(),
+        -offer_decimals
+    )], USD_VALUE_PRECISION).unwrap();
+    println!("price_basket: {:?}", price_basket);
+    let user_offer_value = Uint128::new(price_basket.price as u128);
+    // let user_offer_value: Uint128 = safe_price_to_Uint128(price_basket);
+    println!("offer_asset_with_price.1 {:?}", offer_asset_with_price.1);
+    println!("safe_u128_to_i64(offer_asset.amount.u128()).unwrap() {}", safe_u128_to_i64(offer_asset.amount.u128()).unwrap());
+    println!("-offer_decimals {}", -offer_decimals);
+    println!("initial_aum: {}", initial_aum_value);
+    println!("user_offer_value: {}", user_offer_value);
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
@@ -485,16 +501,25 @@ pub fn swap(
     )[0];
 
 
-    println!("refund value");
+    println!("refund value inputs BASIS POINTS PRECISION: {:?} afbps {:?} {:?}", BASIS_POINTS_PRECISION, offer_fee_bps, ask_fee_bps);
     // Calculate post-fee USD value, then convert USD value to number of tokens.
     let refund_value = user_offer_value
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_bps - offer_fee_bps,
             BASIS_POINTS_PRECISION
     );
-    let invert_price: Price = get_unit_price().div(&offer_asset_with_price.1).unwrap();
-    let refund_amount = refund_value / safe_price_to_Uint128(invert_price);
-
+    println!("refund value: {}", refund_value);
+    let invert_price: Price = get_unit_price().div(&ask_asset_with_price.1).unwrap().scale_to_exponent(-ask_decimals).unwrap();
+    println!("invert_price: {:?}", invert_price);
+    let refund_amount = refund_value / {
+        // Deal with negative exponent
+        let expo = invert_price.expo.abs() as u32;
+        println!("amount, expo, 10^expo, result = {}, {}, {}, {}", invert_price.price, expo, 10_u32.pow(expo),
+        Uint128::from(invert_price.price as u128).multiply_ratio(1_u32, 10_u32.pow(expo)));
+        Uint128::from(invert_price.price as u128).multiply_ratio(1_u32, 10_u32.pow(expo))
+    };
+    println!("after refund_amount: {}", refund_amount);
+    println!("invert_price: {:?}", invert_price);
 
     // Compute the tax for the receiving asset (if it is a native one)
     let return_asset = Asset {
@@ -577,8 +602,8 @@ pub fn calculate_fee_basis_points(
         let initial_reserve_value = initial_reserve_values[i].clone();
         let next_reserve_usd_value = next_reserve_usd_values[i].clone();
 
-        println!("initial_target_lp_usd_value: {}", initial_reserve_value);
-        println!("next_target_lp_usd_value: {}", next_reserve_usd_value);
+        println!("initial_reserve_value: {}", initial_reserve_value);
+        println!("next_reserve_usd_value: {}", next_reserve_usd_value);
         // Compute target value based on weight, so that we may compare to the updated value
         let initial_target_lp_usd_value: Uint128 = initial_aum_value
             .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());
@@ -871,6 +896,7 @@ pub fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
 pub fn safe_price_to_Uint128(
     price: Price,
 ) -> Uint128 {
+    return Uint128::new(price.price as u128);
 
     // Positive price
     assert!(price.price >= 0, "amount must be non-negative");

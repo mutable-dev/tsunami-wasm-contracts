@@ -88,7 +88,7 @@ fn proper_initialization() {
                 code_id: 10u64,
                 msg: to_binary(&InstantiateLpMsg {
                     name: "blue chip basket-LP".to_string(),
-                    symbol: "NLP".to_string(),
+                    symbol: "TLP".to_string(),
                     decimals: LP_DECIMALS,
                     initial_balances: vec![],
                     mint: Some(MinterResponse {
@@ -514,6 +514,7 @@ fn single_asset_deposit() {
     assets.push(InstantiateAssetInfo {
         info: ust_info.clone(),
         address: Addr::unchecked("ust_addr"),
+        oracle: OracleInterface::from_dummy(1_000_000, -6),
         ..create_instantiate_asset_info()
     });
 
@@ -531,8 +532,8 @@ fn single_asset_deposit() {
     basket.lp_token_address = Addr::unchecked("lp-token");
     BASKET.save(deps.as_mut().storage, &basket);
 
-    let depositor = mock_info("first_depositor", &coins(10, "luna"));
-    let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(10) };
+    let depositor = mock_info("first_depositor", &coins(10_000_000, "luna"));
+    let deposit_asset = Asset { info: luna_info.clone(), amount: Uint128::new(10_000_000) };
     let deposit_msg = ExecuteMsg::DepositLiquidity { 
         assets: vec!(deposit_asset),
         slippage_tolerance: None,
@@ -543,19 +544,7 @@ fn single_asset_deposit() {
    // assert_eq!(deposit_res.messages.len(), 1);
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    assert_eq!(basket.assets[0].available_reserves, Uint128::new(10));
-
-    let swap = ExecuteMsg::Swap { 
-        sender: Addr::unchecked(sender),
-        offer_asset: Asset { info: ust_info.clone(), amount: Uint128::new(10) },
-        ask_asset: luna_info.clone(),
-        to: None,
-        max_spread: None,
-        belief_price: None,
-    };
-        
-    let swapper = mock_info("first_depositor", &coins(10, "ust"));
-    let swap_res = execute(deps.as_mut(), mock_env(), swapper, swap).unwrap();
+    assert_eq!(basket.assets[0].available_reserves, Uint128::new(10_000_000));
 }
 
 #[ignore = "Multi-asset deposits are not yet implemented"]
@@ -572,11 +561,13 @@ fn multi_asset_deposit() {
     assets.push(InstantiateAssetInfo {
         info: luna_info.clone(),
         address: Addr::unchecked("luna_addr"),
+        oracle: OracleInterface::from_dummy(100_000_000, -6),
         ..create_instantiate_asset_info()
     });
     assets.push(InstantiateAssetInfo {
         info: ust_info.clone(),
         address: Addr::unchecked("ust_addr"),
+        oracle: OracleInterface::from_dummy(1_000_000, -6),
         ..create_instantiate_asset_info()
     });
 
@@ -591,8 +582,8 @@ fn multi_asset_deposit() {
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
 
-    let luna_deposit_amount = 10;
-    let ust_deposit_amount = 10;
+    let luna_deposit_amount = 10_000_000;
+    let ust_deposit_amount = 10_000_000;
     let deposit_funds = [
         Coin { denom: "luna".to_string(), amount: Uint128::new(luna_deposit_amount) },
         Coin { denom: "ust".to_string(), amount: Uint128::new(ust_deposit_amount) },
@@ -678,11 +669,13 @@ fn multiple_deposits() {
     assets.push(InstantiateAssetInfo {
         info: luna_info.clone(),
         address: Addr::unchecked("luna_addr"),
+        oracle: OracleInterface::from_dummy(100_000_000, -6),
         ..create_instantiate_asset_info()
     });
     assets.push(InstantiateAssetInfo {
         info: ust_info.clone(),
         address: Addr::unchecked("ust_addr"),
+        oracle: OracleInterface::from_dummy(1_000_000, -6),
         ..create_instantiate_asset_info()
     });
 
@@ -699,8 +692,8 @@ fn multiple_deposits() {
     basket.lp_token_address = Addr::unchecked("lp-token");
     BASKET.save(deps.as_mut().storage, &basket);
 
-    let luna_amount1 = 10;
-    let luna_amount2 = 10;
+    let luna_amount1 = 10_000_000;
+    let luna_amount2 = 10_000_000;
     let depositor1 = mock_info("first_depositor", &coins(luna_amount1, "luna"));
     let depositor2 = mock_info("second_depositor", &coins(luna_amount2, "luna"));
     let deposit_asset1 = Asset { info: luna_info.clone(), amount: Uint128::new(luna_amount1) };
@@ -720,6 +713,23 @@ fn multiple_deposits() {
     };
 
     let _deposit_res2 = execute(deps.as_mut(), mock_env(), depositor2, deposit_msg2).unwrap();
+    println!("_deposit_res2: {:?}", _deposit_res2);
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(basket.assets[0].available_reserves, Uint128::new(20_000_000));
+
+    let swap = ExecuteMsg::Swap { 
+        sender: Addr::unchecked(sender),
+        offer_asset: Asset { info: ust_info.clone(), amount: Uint128::new(10_000_000) },
+        ask_asset: luna_info.clone(),
+        to: None,
+        max_spread: None,
+        belief_price: None,
+    };
+        
+    let swapper = mock_info("first_depositor", &coins(10_000_000, "ust"));
+    let swap_res = execute(deps.as_mut(), mock_env(), swapper, swap).unwrap();
+    println!("swap res {:?}", swap_res);
 }
 
 /// Check that a user trying to send a deposit without transferring the appropriate funds

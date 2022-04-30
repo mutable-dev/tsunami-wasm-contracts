@@ -105,9 +105,14 @@ impl Asset {
                 })?,
                 funds: vec![],
             })),
-            AssetInfo::NativeToken { .. } => Ok(CosmosMsg::Bank(BankMsg::Send {
+            AssetInfo::NativeToken { denom } => Ok(CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.to_string(),
-                amount: vec![self.deduct_tax(querier)?],
+                amount: vec![
+                    Coin {
+                        denom: denom.to_string(),
+                        amount: amount,
+                    }
+                ],
             })),
         }
     }
