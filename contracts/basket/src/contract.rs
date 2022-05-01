@@ -678,11 +678,11 @@ pub fn provide_liquidity(
     let offer_assets_with_price: Vec<(BasketAsset, Price)> = {
         let mut v: Vec<(BasketAsset, Price)>= vec![];
 
-        for asset in &offer_assets {
+        for offer_asset in &offer_assets {
             v.push(match basket.assets
                 .iter()
                 .zip(basket.get_prices(&deps.querier)?)
-                .find(|(asset, _price)| asset.info.equal(&asset.info)) {
+                .find(|(asset, _price)| asset.info.equal(&offer_asset.info)) {
                     Some((asset, price)) => (asset.clone(), price.clone()),
                     None => return Err(ContractError::AssetNotInBasket)
                 }
@@ -713,8 +713,9 @@ pub fn provide_liquidity(
     // Value of user deposits
     let user_deposit_values: Vec<Uint128> = offer_assets_with_price
         .iter()
+        .zip(offer_assets.clone())
         .enumerate()
-        .map(|(i, (offer_asset_with_price, price))| 
+        .map(|(i, ((offer_asset_with_price, price), offer_asset))| 
             safe_price_to_Uint128(
                     {
                         assert!(offer_assets[i].info.equal(&offer_asset_with_price.info));
@@ -722,9 +723,9 @@ pub fn provide_liquidity(
                             &[(
                                 *price, 
                                 safe_u128_to_i64(
-                                    offer_asset_with_price.available_reserves.u128() + offer_asset_with_price.occupied_reserves.u128()
+                                    offer_asset.amount.u128()
                                 ).unwrap(),
-                                -(query_token_precision(&deps.querier, &offer_asset_with_price.info).unwrap() as i32)
+                                -(query_token_precision(&deps.querier, &offer_asset.info).unwrap() as i32)
                             )],
                             USD_VALUE_PRECISION
                     ).unwrap()
@@ -733,13 +734,6 @@ pub fn provide_liquidity(
         )
         .collect();
     let total_user_deposit_value: Uint128 = user_deposit_values.iter().sum();
-    
-    // Begin calculating amount of LP token to mint
-    let new_aum_value = initial_aum_value + total_user_deposit_value;
-
-    // Get price feeds, prices of basket assets
-    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
-    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
     // Retrieve LP token supply
     let lp_supply: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
@@ -749,7 +743,10 @@ pub fn provide_liquidity(
     let tokens_to_mint: Uint128 = if lp_supply.is_zero() {
 
         // Handle deposit into empty basket at 1:1 USD_VALUE_PRECISION mint. First deposit gets zero fees
-        total_user_deposit_value
+        total_user_deposit_value.multiply_ratio(
+            10_u128.pow(LP_DECIMALS as u32),
+            10_u128.pow(-USD_VALUE_PRECISION as u32),
+        )
 
     } else {
 
@@ -880,10 +877,11 @@ pub fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
 pub fn safe_price_to_Uint128(
     price: Price,
 ) -> Uint128 {
-    return Uint128::new(price.price as u128);
 
     // Positive price
     assert!(price.price >= 0, "amount must be non-negative");
+    return Uint128::new(price.price as u128);
+
     let amount: u128 = price.price as u128;
 
     if price.expo >= 0 {

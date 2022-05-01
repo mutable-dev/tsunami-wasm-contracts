@@ -17,7 +17,7 @@ use cosmwasm_std::coins;
 use pyth_sdk_terra::{PriceFeed, PriceIdentifier, PriceStatus};
 use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR };
 use cosmwasm_std::{
-    to_binary,  Addr,
+    to_binary,  Addr, Response, attr,
     ReplyOn, SubMsg, Uint128,
     WasmMsg, BalanceResponse, from_binary, BankQuery, QueryRequest, Coin,
     StdError::GenericErr, BankMsg, CosmosMsg, Binary
@@ -686,46 +686,59 @@ fn multiple_deposits_and_swap_and_withdraw() {
 
     let sender = "addr0000";
     let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked("lp-token");
     BASKET.save(deps.as_mut().storage, &basket);
 
     let luna_amount1 = 10_000_000;
-    let luna_amount2 = 10_000_000;
+    let luna_amount2 = 1_000_000;
     let depositor1 = mock_info("first_depositor", &coins(luna_amount1, "luna"));
     let depositor2 = mock_info("second_depositor", &coins(luna_amount2, "luna"));
     let deposit_asset1 = Asset { info: luna_info.clone(), amount: Uint128::new(luna_amount1) };
     let deposit_asset2 = Asset { info: luna_info.clone(), amount: Uint128::new(luna_amount2) };
 
     let deposit_msg1 = ExecuteMsg::DepositLiquidity { 
-        assets: vec!(deposit_asset1),
+        assets: vec!(deposit_asset1.clone()),
         slippage_tolerance: None, 
         receiver: None
     };
-    let _deposit_res1 = execute(deps.as_mut(), mock_env(), depositor1, deposit_msg1).unwrap();
+    let deposit_res1 = execute(deps.as_mut(), mock_env(), depositor1.clone(), deposit_msg1).unwrap();
     
-    let mut offer_asset_attribute = &_deposit_res1.attributes[3].value;
-    let mut tokens_to_mint = &_deposit_res1.attributes[4].value;
-    assert_eq!(offer_asset_attribute, "[Asset { info: NativeToken { denom: \"luna\" }, amount: Uint128(10000000) }]");
-    assert_eq!(tokens_to_mint, "1000000000");
+    let expected_lp_tokens = "1000000000000";
+    let expected_attributes = vec![
+        attr("action", "provide_liquidity"),
+        attr("sender", depositor1.sender.clone().as_str()),
+        attr("receiver", depositor1.sender.clone().as_str()),
+        attr("offer_asset", format!("{:?}", &[deposit_asset1])),
+        attr("tokens_to_mint", expected_lp_tokens),
+    ];
+    for i in 0..expected_attributes.len() {
+        let actual_attribute = deposit_res1.attributes[i].clone();
+        let expected_attribute = expected_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute);
+    }
 
     let deposit_msg2 = ExecuteMsg::DepositLiquidity { 
-        assets: vec!(deposit_asset2),
+        assets: vec!(deposit_asset2.clone()),
         slippage_tolerance: None, 
         receiver: None
     };
 
-    let _deposit_res2 = execute(deps.as_mut(), mock_env(), depositor2, deposit_msg2).unwrap();
-    offer_asset_attribute = &_deposit_res2.attributes[3].value;
-    tokens_to_mint = &_deposit_res2.attributes[4].value;
-    assert_eq!(offer_asset_attribute, "[Asset { info: NativeToken { denom: \"luna\" }, amount: Uint128(10000000) }]");
-    assert_eq!(tokens_to_mint, "1000000000");
+    let deposit_res2 = execute(deps.as_mut(), mock_env(), depositor2, deposit_msg2).unwrap();
+    let expected_lp_tokens = "100000000000";
+    let expected_attributes = vec![
+        attr("action", "provide_liquidity"),
+        attr("sender", depositor1.sender.clone().as_str()),
+        attr("receiver", depositor1.sender.clone().as_str()),
+        attr("offer_asset", format!("{:?}", &[deposit_asset2.clone()])),
+        attr("tokens_to_mint", expected_lp_tokens),
+    ];
 
 
     // swap_res.messages[0].msg
-    match &_deposit_res2.messages[0].msg {
+    match &deposit_res2.messages[0].msg {
         CosmosMsg::Wasm(WasmMsg::Execute{contract_addr, msg, funds}) => {
             assert_eq!(contract_addr, "lp-token");
         },
@@ -733,7 +746,7 @@ fn multiple_deposits_and_swap_and_withdraw() {
     }
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    assert_eq!(basket.assets[0].available_reserves, Uint128::new(20_000_000));
+    assert_eq!(basket.assets[0].available_reserves, Uint128::new(11_000_000));
     assert_eq!(basket.assets[1].available_reserves, Uint128::new(0));
 
     let swap = ExecuteMsg::Swap { 
@@ -772,7 +785,7 @@ fn multiple_deposits_and_swap_and_withdraw() {
     }
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    assert_eq!(basket.assets[0].available_reserves, Uint128::new(19_900_000));
+    assert_eq!(basket.assets[0].available_reserves, Uint128::new(10_900_000));
     assert_eq!(basket.assets[1].available_reserves, Uint128::new(10_000_000));
 
     let withdraw = ExecuteMsg::Receive { 
