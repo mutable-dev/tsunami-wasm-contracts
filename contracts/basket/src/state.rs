@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 
 use cosmwasm_std::{Addr, Uint128, QuerierWrapper, StdResult};
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
@@ -15,10 +16,10 @@ use std::cfg;
 use phf::{phf_map};
 
 /// Basket of assets
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct Basket {
 	/// Assets
-	pub assets: Vec<BasketAsset>,
+	pub assets: HashMap<AssetInfo, BasketAsset>,
 	/// Name of Basket
 	pub name: String,
 	/// fee for non-stable asset perp
@@ -200,8 +201,13 @@ impl Basket {
 		assets: Vec<BasketAsset>,
 		msg: &InstantiateMsg,
 	) -> Self {
+		//convert assets vec to map
+		let _assets: HashMap<AssetInfo, BasketAsset> = assets
+			.iter()
+			.map(|asset| (asset.info.clone(), asset.clone()))
+			.collect();
 		Basket {
-			assets,
+			assets: _assets,
 			name: msg.name.clone(),
 			tax_basis_points: msg.tax_basis_points,
 			stable_tax_basis_points: msg.stable_tax_basis_points,
@@ -218,7 +224,7 @@ impl Basket {
 
 	pub fn get_total_weights(&self) -> Uint128 {
 		let mut total_weights = Uint128::zero();
-		for asset in &self.assets{
+		for (_, asset) in &self.assets{
 			total_weights += asset.token_weight;
 		}
 		total_weights
@@ -227,13 +233,9 @@ impl Basket {
 	pub fn match_basket_assets(&self, asset_infos: &Vec<AssetInfo>) -> Vec<BasketAsset> {
 		let mut v: Vec<BasketAsset> = vec![];
 		for asset in asset_infos.iter() {
-			v.push(
-				self.assets
-					.iter()
-					.find(|basket_asset| basket_asset.info.equal(&asset))
-					.expect("an asset was not found in the basket")
-					.clone()
-			)
+			if let Some(asset) = self.assets.get(asset) {
+				v.push(asset.clone());
+			}
 		}
 		v
 	}
@@ -246,7 +248,7 @@ impl Basket {
 	) -> Result<Price, ContractError> {
 
 		// Build amounts: input to price_basket
-		let tokens: Vec<(BasketAsset, Price)> = self.assets.iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
+		let tokens: Vec<(BasketAsset, Price)> = self.assets.iter().map(|(_, x)| x.clone()).zip(self.get_prices(querier)?).collect();
 		let amounts: &[(Price, i64, i32)] = &tokens
 			.iter()
 			.map(|(basket_asset, price)| (
@@ -294,7 +296,7 @@ impl Basket {
 	/// TODO: Get actual oracle price feeds
 	pub fn get_price_feeds(&self, querier: &QuerierWrapper) -> Result<Vec<PriceFeed>, ContractError> {
 		let mut v = vec![];
-		for asset in &self.assets {
+		for (_, asset) in &self.assets {
 			v.push(asset.oracle.get_price_feed(querier)?);
 		}
 		
@@ -304,7 +306,7 @@ impl Basket {
 	// This uses `get_price_feeds` and goes a step further to unwrap `Price`s.
 	pub fn get_prices(&self, querier: &QuerierWrapper) -> Result<Vec<Price>, ContractError> {
 		let mut v = vec![];
-		for asset in &self.assets {
+		for (_, asset) in &self.assets {
 			v.push(asset.oracle.get_price(querier)?);
 		}
 

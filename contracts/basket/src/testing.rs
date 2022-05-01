@@ -110,7 +110,7 @@ fn proper_initialization() {
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(basket.name, "blue chip basket");
-    assert_eq!(basket.assets, vec![BasketAsset{
+    assert_eq!(basket.assets.get(&luna_info).unwrap(), &BasketAsset{
         info: luna_info.clone(),
         token_weight: Uint128::new(1),
         min_profit_basis_points: Uint128::new(1),
@@ -127,7 +127,7 @@ fn proper_initialization() {
         available_reserves: Uint128::new(0),
         fee_reserves: Uint128::new(0),
         ticker_data: create_ticker_data()
-    }]);
+    });
     assert_eq!(basket.tax_basis_points, Uint128::new(1));
     assert_eq!(basket.stable_swap_fee_basis_points, Uint128::new(1));
     assert_eq!(basket.mint_burn_basis_points, Uint128::new(1));
@@ -196,11 +196,10 @@ fn exploration() {
 }
 
 fn create_basket() -> Basket {
-    let basket_asset = create_basket_asset();
-    let basket_asset2 = create_basket_asset();
-    let basket_asset_copy = create_basket_asset();
+    let basket_asset1 = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
+    let basket_asset2 = create_basket_asset( AssetInfo::NativeToken{denom: "uusd".to_string()});
     Basket::new(
-        vec!(basket_asset, basket_asset_copy.clone()), 
+        vec!(basket_asset1, basket_asset2), 
         &InstantiateMsg{
             assets: vec!(create_instantiate_asset_info()),
             name: "blue chip basket".to_string(),
@@ -218,9 +217,9 @@ fn create_basket() -> Basket {
     )
 }
 
-fn create_basket_asset() -> BasketAsset {
+fn create_basket_asset(info: AssetInfo) -> BasketAsset {
     BasketAsset {
-        info: AssetInfo::NativeToken{denom: "uluna".to_string()},
+        info,
         token_weight:  Uint128::new(1),
         min_profit_basis_points:  Uint128::new(100),
         max_asset_amount:  Uint128::new(100),
@@ -260,7 +259,7 @@ pub fn create_price_feed(price: i64, exponent: i32) -> PriceFeed {
 
 #[test]
 fn slightly_improves_basket_add() {
-    let basket_asset = create_basket_asset();
+    let basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     let fees = calculate_fee_basis_points(
         Uint128::new(100_000),
@@ -275,7 +274,7 @@ fn slightly_improves_basket_add() {
 
 #[test]
 fn strongly_improves_basket_add() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(4);
 
@@ -292,7 +291,7 @@ fn strongly_improves_basket_add() {
 
 #[test]
 fn strongly_harms_basket_add() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(500);
 
@@ -309,7 +308,7 @@ fn strongly_harms_basket_add() {
 
 #[test]
 fn lightly_harms_basket_add() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(500);
 
@@ -326,7 +325,7 @@ fn lightly_harms_basket_add() {
 
 #[test]
 fn slightly_improves_basket_remove() {
-        let mut basket_asset = create_basket_asset();
+        let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
         let basket = create_basket();
         basket_asset.available_reserves = Uint128::new(550);
         let fees = calculate_fee_basis_points(
@@ -342,7 +341,7 @@ fn slightly_improves_basket_remove() {
 
 #[test]
 fn strongly_improves_basket_remove() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(1000);
 
@@ -359,7 +358,7 @@ fn strongly_improves_basket_remove() {
 
 #[test]
 fn strongly_harms_basket_remove() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(10);
 
@@ -376,7 +375,7 @@ fn strongly_harms_basket_remove() {
 
 #[test]
 fn lightly_harms_basket_remove() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(500);
 
@@ -393,7 +392,7 @@ fn lightly_harms_basket_remove() {
 
 #[test]
 fn neutral_basket_remove() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(550);
 
@@ -410,7 +409,7 @@ fn neutral_basket_remove() {
 
 #[test]
 fn neutral_basket_add() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(450);
 
@@ -428,7 +427,7 @@ fn neutral_basket_add() {
 
 #[test]
 fn imbalanced_basket_big_double_balanced_add() {
-    let mut basket_asset = create_basket_asset();
+    let mut basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
     let basket = create_basket();
     basket_asset.available_reserves = Uint128::new(450);
 
@@ -446,7 +445,7 @@ fn imbalanced_basket_big_double_balanced_add() {
 // #[test]
 // fn test_calculate_aum_one_asset() {
 //     let mut basket = create_basket();
-//     let basket_asset = create_basket_asset();
+//     let basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
 //     let mut deps = mock_dependencies(&[]);
 //     basket.assets[0].available_reserves = Uint128::new(450);
 
@@ -463,8 +462,8 @@ fn imbalanced_basket_big_double_balanced_add() {
 // #[test]
 // fn test_calculate_aum_two_assets() {
 //     let mut basket = create_basket();
-//     let basket_asset = create_basket_asset();
-//     let basket_asset_copy = create_basket_asset();
+//     let basket_asset = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
+//     let basket_asset_copy = create_basket_asset(AssetInfo::NativeToken{denom: "uluna".to_string()});
 //     let mut deps = mock_dependencies(&[]);
 //     basket.assets[0].available_reserves = Uint128::new(450);
 //     basket.assets[0].info = AssetInfo::NativeToken{denom: "ste".to_string()};
@@ -543,7 +542,7 @@ fn single_asset_deposit() {
    // assert_eq!(deposit_res.messages.len(), 1);
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
-    assert_eq!(basket.assets[0].available_reserves, Uint128::new(10));
+    assert_eq!(basket.assets.get(&luna_info).unwrap().available_reserves, Uint128::new(10));
 }
 
 #[ignore = "Multi-asset deposits are not yet implemented"]
@@ -621,10 +620,6 @@ fn multi_asset_deposit() {
     assert_eq!("ust", contract_balance_ust.denom);
     assert_eq!(Uint128::new(luna_deposit_amount), contract_balance_luna.amount);
     assert_eq!(Uint128::new(ust_deposit_amount), contract_balance_ust.amount);
-
-    // Assert that the deposited amounts match with the pool reserves data in the basket
-    assert_eq!(contract_balance_luna.amount, query_basket(deps.as_ref()).unwrap().assets[0].available_reserves);
-    assert_eq!(contract_balance_ust.amount, query_basket(deps.as_ref()).unwrap().assets[1].available_reserves);
 
     // Assert that the depositor receives LP tokens in return
     let lp_token_addr = query_basket(deps.as_ref()).unwrap().lp_token_address;
