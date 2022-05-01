@@ -160,14 +160,14 @@ pub fn withdraw_liquidity(
     // milli-USDs per token
     let invert_price: Price = get_unit_price().div(&ask_asset_with_price.1).unwrap();
     let refund_amount = redemption_value / safe_price_to_Uint128(invert_price);
-    let refund_asset = Asset {
+    let redemption_asset = Asset {
         amount: refund_amount,
         info: ask_asset.info.clone()
     };
 
     // Update the asset info
     let messages: Vec<CosmosMsg> = vec![
-        refund_asset
+        redemption_asset
             .clone()
             .into_msg(&deps.querier, sender.clone())?,
         CosmosMsg::Wasm(WasmMsg::Execute {
@@ -182,9 +182,10 @@ pub fn withdraw_liquidity(
         attr("sender", sender.as_str()),
         attr("withdrawn_share", &amount.to_string()),
         attr(
-            "refund_asset",
-            format!("{}", refund_asset),
+            "redemption_asset",
+            format!("{}", redemption_asset),
         ),
+        attr("fee_bps", &fee_bps.to_string()),
     ];
 
     Ok(Response::new()

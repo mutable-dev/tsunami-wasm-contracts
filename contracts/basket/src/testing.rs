@@ -20,9 +20,9 @@ use cosmwasm_std::{
     to_binary,  Addr,
     ReplyOn, SubMsg, Uint128,
     WasmMsg, BalanceResponse, from_binary, BankQuery, QueryRequest, Coin,
-    StdError::GenericErr, BankMsg, CosmosMsg
+    StdError::GenericErr, BankMsg, CosmosMsg, Binary
 };
-use cw20::{ MinterResponse, Cw20ExecuteMsg };
+use cw20::{ MinterResponse, Cw20ReceiveMsg, Cw20ExecuteMsg };
 
 #[test]
 fn proper_initialization() {
@@ -648,7 +648,7 @@ fn multi_asset_deposit() {
 /// Check that the second deposit has fees subtracted from the LP tokens they receive
 /// For later: check that the correct amount of fees are taken
 #[test]
-fn multiple_deposits_and_swap() {
+fn multiple_deposits_and_swap_and_withdraw() {
     use crate::state::BASKET;
     let mut deps = mock_dependencies(&[]);
     deps.querier.with_token_balances(&[
@@ -774,6 +774,31 @@ fn multiple_deposits_and_swap() {
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(basket.assets[0].available_reserves, Uint128::new(19_900_000));
     assert_eq!(basket.assets[1].available_reserves, Uint128::new(10_000_000));
+
+    let withdraw = ExecuteMsg::Receive { 
+        msg: Cw20ReceiveMsg {
+            amount: Uint128::new(100_000),
+            sender: sender.to_string(),
+            msg: Binary::from_base64("").unwrap(),
+        }
+    };
+        
+    let withdrawer = mock_info("first_depositor", &coins(10_000_000, "ust"));
+    let withdraw_res = execute(deps.as_mut(), mock_env(), withdrawer, withdraw).unwrap();
+
+    let withdraw_redemption_asset = &withdraw_res.attributes[3].value;
+    let withdraw_fee_bps = &withdraw_res.attributes[4].value;
+    assert_eq!(withdraw_redemption_asset, "0");
+    assert_eq!(withdraw_fee_bps, "0");
+
+    // swap_res.messages[0].msg
+    match &withdraw_res.messages[0].msg {
+        CosmosMsg::Wasm(WasmMsg::Execute{contract_addr, msg, funds}) => {
+            assert_eq!(contract_addr, "lp-token");
+            assert_eq!(msg.clone(), to_binary(&Cw20ExecuteMsg::Burn { amount: Uint128::new(100) }).unwrap());
+        },
+        _ => panic!("Expected BankMsg"),
+    }
 
 }
 
