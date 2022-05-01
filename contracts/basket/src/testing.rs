@@ -20,9 +20,9 @@ use cosmwasm_std::{
     to_binary,  Addr,
     ReplyOn, SubMsg, Uint128,
     WasmMsg, BalanceResponse, from_binary, BankQuery, QueryRequest, Coin,
-    StdError::GenericErr
+    StdError::GenericErr, BankMsg, CosmosMsg
 };
-use cw20::{ MinterResponse};
+use cw20::{ MinterResponse, Cw20ExecuteMsg };
 
 #[test]
 fn proper_initialization() {
@@ -648,7 +648,7 @@ fn multi_asset_deposit() {
 /// Check that the second deposit has fees subtracted from the LP tokens they receive
 /// For later: check that the correct amount of fees are taken
 #[test]
-fn multiple_deposits() {
+fn multiple_deposits_and_swap() {
     use crate::state::BASKET;
     let mut deps = mock_dependencies(&[]);
     deps.querier.with_token_balances(&[
@@ -706,6 +706,11 @@ fn multiple_deposits() {
     };
     let _deposit_res1 = execute(deps.as_mut(), mock_env(), depositor1, deposit_msg1).unwrap();
     
+    let mut offer_asset_attribute = &_deposit_res1.attributes[3].value;
+    let mut tokens_to_mint = &_deposit_res1.attributes[4].value;
+    assert_eq!(offer_asset_attribute, "[Asset { info: NativeToken { denom: \"luna\" }, amount: Uint128(10000000) }]");
+    assert_eq!(tokens_to_mint, "1000000000");
+
     let deposit_msg2 = ExecuteMsg::DepositLiquidity { 
         assets: vec!(deposit_asset2),
         slippage_tolerance: None, 
@@ -713,10 +718,23 @@ fn multiple_deposits() {
     };
 
     let _deposit_res2 = execute(deps.as_mut(), mock_env(), depositor2, deposit_msg2).unwrap();
-    println!("_deposit_res2: {:?}", _deposit_res2);
+    offer_asset_attribute = &_deposit_res2.attributes[3].value;
+    tokens_to_mint = &_deposit_res2.attributes[4].value;
+    assert_eq!(offer_asset_attribute, "[Asset { info: NativeToken { denom: \"luna\" }, amount: Uint128(10000000) }]");
+    assert_eq!(tokens_to_mint, "1000000000");
+
+
+    // swap_res.messages[0].msg
+    match &_deposit_res2.messages[0].msg {
+        CosmosMsg::Wasm(WasmMsg::Execute{contract_addr, msg, funds}) => {
+            assert_eq!(contract_addr, "lp-token");
+        },
+        _ => panic!("Expected BankMsg"),
+    }
 
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(basket.assets[0].available_reserves, Uint128::new(20_000_000));
+    assert_eq!(basket.assets[1].available_reserves, Uint128::new(0));
 
     let swap = ExecuteMsg::Swap { 
         sender: Addr::unchecked(sender),
@@ -729,7 +747,34 @@ fn multiple_deposits() {
         
     let swapper = mock_info("first_depositor", &coins(10_000_000, "ust"));
     let swap_res = execute(deps.as_mut(), mock_env(), swapper, swap).unwrap();
-    println!("swap res {:?}", swap_res);
+
+    let swap_offer_asset = &swap_res.attributes[3].value;
+    let swap_ask_asset = &swap_res.attributes[4].value;
+    let swap_offer_amount = &swap_res.attributes[5].value;
+    let swap_return_amount = &swap_res.attributes[6].value;
+    let offer_bps = &swap_res.attributes[7].value;
+    let ask_bps =  &swap_res.attributes[8].value;
+    assert_eq!(swap_offer_asset, "ust");
+    assert_eq!(swap_ask_asset, "luna");
+    assert_eq!(swap_offer_amount, "10000000");
+    assert_eq!(swap_return_amount, "100000");
+    assert_eq!(offer_bps, "0");
+    assert_eq!(ask_bps, "0");
+
+
+    // swap_res.messages[0].msg
+    match &swap_res.messages[0].msg {
+        CosmosMsg::Bank(BankMsg::Send{to_address, amount}) => {
+            assert_eq!(amount[0].amount, Uint128::new(100_000));
+            assert_eq!(to_address, sender);
+        },
+        _ => panic!("Expected BankMsg"),
+    }
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(basket.assets[0].available_reserves, Uint128::new(19_900_000));
+    assert_eq!(basket.assets[1].available_reserves, Uint128::new(10_000_000));
+
 }
 
 /// Check that a user trying to send a deposit without transferring the appropriate funds

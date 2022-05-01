@@ -306,7 +306,6 @@ impl Basket {
 	pub fn get_prices(&self, querier: &QuerierWrapper) -> Result<Vec<Price>, ContractError> {
 		let mut v = vec![];
 		for asset in &self.assets {
-			// println!("price: {:?}", asset.oracle.get_price_feed(querier)?);
 			v.push(asset.oracle.get_price(querier)?);
 		}
 

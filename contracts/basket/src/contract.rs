@@ -427,7 +427,6 @@ pub fn swap(
 
     // Grab relevant asset assets in basket, zipped with price
     let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?.try_into().unwrap();
-    println!("offer_decimals: {}", offer_decimals);
     let offer_asset_with_price: (BasketAsset, Price, Asset) = match basket.assets.iter()
         .zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| offer_asset.info.equal(&asset.info)) {
@@ -474,14 +473,7 @@ pub fn swap(
         safe_u128_to_i64(offer_asset.amount.u128()).unwrap(),
         -offer_decimals
     )], USD_VALUE_PRECISION).unwrap();
-    println!("price_basket: {:?}", price_basket);
     let user_offer_value = Uint128::new(price_basket.price as u128);
-    // let user_offer_value: Uint128 = safe_price_to_Uint128(price_basket);
-    println!("offer_asset_with_price.1 {:?}", offer_asset_with_price.1);
-    println!("safe_u128_to_i64(offer_asset.amount.u128()).unwrap() {}", safe_u128_to_i64(offer_asset.amount.u128()).unwrap());
-    println!("-offer_decimals {}", -offer_decimals);
-    println!("initial_aum: {}", initial_aum_value);
-    println!("user_offer_value: {}", user_offer_value);
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
@@ -500,7 +492,6 @@ pub fn swap(
     )[0];
 
 
-    println!("refund value inputs: BASIS POINTS PRECISION {:?}; ofbps {:?}; afbps {:?}", BASIS_POINTS_PRECISION, offer_fee_bps, ask_fee_bps);
     // Calculate post-fee USD value, then convert USD value to number of tokens.
     let refund_value = user_offer_value
         .multiply_ratio(
@@ -511,7 +502,6 @@ pub fn swap(
     let ask_per_unit_usd = ask_asset_with_price.1.price as u128;
     // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
     let refund_amount = refund_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
-    println!("refund_amount: {}", refund_amount);
 
     // Construct asset type and convert to message to `to` or `sender`
     let return_asset = Asset {
@@ -548,7 +538,7 @@ pub fn swap(
         .add_attribute("offer_asset", offer_asset.info.to_string())
         .add_attribute("ask_asset", ask_asset_with_price.0.info.to_string())
         .add_attribute("offer_amount", offer_asset.amount.to_string())
-        .add_attribute("return_amount", refund_value.to_string())
+        .add_attribute("return_amount", refund_amount.to_string())
         .add_attribute("offer_bps", offer_fee_bps.to_string())
         .add_attribute("ask_bps", ask_fee_bps.to_string())
     )
@@ -596,8 +586,6 @@ pub fn calculate_fee_basis_points(
         let initial_reserve_value = initial_reserve_values[i].clone();
         let next_reserve_usd_value = next_reserve_usd_values[i].clone();
 
-        println!("initial_reserve_value: {}", initial_reserve_value);
-        println!("next_reserve_usd_value: {}", next_reserve_usd_value);
         // Compute target value based on weight, so that we may compare to the updated value
         let initial_target_lp_usd_value: Uint128 = initial_aum_value
             .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());
@@ -755,6 +743,7 @@ pub fn provide_liquidity(
     // Retrieve LP token supply
     let lp_supply: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
 
+    println!("total_user_deposit_value: {}", total_user_deposit_value);
     // Calculate share -  What exactly is share?
     let tokens_to_mint: Uint128 = if lp_supply.is_zero() {
 
