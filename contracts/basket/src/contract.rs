@@ -547,10 +547,12 @@ pub fn swap(
 /// 
 /// * `initial_aum_value` - The total value (normalized in USD) of the Basket's pool
 /// * `basket` - The Basket of assets being traded against
-/// * `initial_reserve_values` - The reserve values (normalized in USD) for each BasketAsset being traded against
+/// * `initial_reserve_values` - The pool reserve values (normalized in USD) for each BasketAsset
+/// being traded against. this includes occupied and unoccupied assets in the pool.
 /// * `offer_or_ask_values` - The USD amount to trade for each BasketAsset 
 /// * `offer_or_ask_assets` - The BasketAssets that are being traded against
-/// * `action` - Offer|Ask used to determine if the user is buying or selling the assets, respectively.
+/// * `action` - Offer|Ask used to determine if the user is buying or selling the assets, 
+/// respectively.
 /// 
 /// CHECK: types here are bad, and conversions too many, need to consolidate.
 /// CHECK: that we are doing the correct math when calculating
