@@ -726,15 +726,20 @@ fn multiple_deposits_and_swap_and_withdraw() {
         receiver: None
     };
 
-    let deposit_res2 = execute(deps.as_mut(), mock_env(), depositor2, deposit_msg2).unwrap();
+    let deposit_res2 = execute(deps.as_mut(), mock_env(), depositor2.clone(), deposit_msg2).unwrap();
     let expected_lp_tokens = "100000000000";
     let expected_attributes = vec![
         attr("action", "provide_liquidity"),
-        attr("sender", depositor1.sender.clone().as_str()),
-        attr("receiver", depositor1.sender.clone().as_str()),
+        attr("sender", depositor2.sender.clone().as_str()),
+        attr("receiver", depositor2.sender.clone().as_str()),
         attr("offer_asset", format!("{:?}", &[deposit_asset2.clone()])),
         attr("tokens_to_mint", expected_lp_tokens),
     ];
+    for i in 0..expected_attributes.len() {
+        let actual_attribute = deposit_res2.attributes[i].clone();
+        let expected_attribute = expected_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute);
+    }
 
 
     // swap_res.messages[0].msg
