@@ -210,7 +210,7 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
         static DESCRIPTOR: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> =
             ::protobuf::rt::LazyV2::INIT;
         DESCRIPTOR.get(|| {
-            let mut fields = vec![
+            let fields = vec![
                 ::protobuf::reflect::accessor::make_simple_field_accessor::<
                 _,
                 ::protobuf::types::ProtobufTypeString,

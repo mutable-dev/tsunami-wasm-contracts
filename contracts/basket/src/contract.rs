@@ -140,7 +140,7 @@ pub fn withdraw_liquidity(
         .zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.info.equal(&asset.info))
     {
-        Some((asset, price)) => (asset.clone(), price.clone()),
+        Some((asset, price)) => (asset.clone(), price),
         None => return Err(ContractError::AssetNotInBasket),
     };
     // Determine the amount of an asset held in the contract based on our internal accounting
@@ -166,7 +166,7 @@ pub fn withdraw_liquidity(
     let fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
         &basket,
-        &vec![ask_asset_value_in_contract],
+        &[ask_asset_value_in_contract],
         &vec![redemption_value],
         &vec![ask_asset.clone()],
         Action::Ask,
@@ -180,7 +180,7 @@ pub fn withdraw_liquidity(
     let redemption_amount = redemption_value / safe_price_to_uint128(invert_price);
     let redemption_asset = Asset {
         amount: redemption_amount,
-        info: ask_asset.info.clone(),
+        info: ask_asset.info,
     };
 
     // Update the asset info
@@ -209,8 +209,8 @@ pub fn withdraw_liquidity(
 }
 
 /// TODO: Need to implement this
-fn validate_addr(_api: &dyn Api, sender: &String) -> Result<Addr, ContractError> {
-    Ok(Addr::unchecked(sender.clone()))
+fn validate_addr(_api: &dyn Api, sender: &str) -> Result<Addr, ContractError> {
+    Ok(Addr::unchecked(sender.to_owned()))
 }
 
 /// Produces unit price of USD, in units of `USD_VALUE_PRECISION`
@@ -494,17 +494,17 @@ pub fn swap(
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
         &basket,
-        &vec![offer_asset_value_in_contract],
+        &[offer_asset_value_in_contract],
         &vec![user_offer_value],
-        &basket.match_basket_assets(&vec![offer_asset.info.clone()]),
+        &basket.match_basket_assets(&[offer_asset.info.clone()]),
         Action::Offer,
     )[0];
     let ask_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
         &basket,
-        &vec![ask_asset_value_in_contract],
+        &[ask_asset_value_in_contract],
         &vec![user_offer_value],
-        &basket.match_basket_assets(&vec![ask_asset.clone()]),
+        &basket.match_basket_assets(&[ask_asset.clone()]),
         Action::Ask,
     )[0];
 
