@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Receive {
-        msg: Cw20ReceiveMsg,
-    },
+    Receive { msg: Cw20ReceiveMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -169,21 +167,21 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
         DESCRIPTOR.get(|| {
             let fields = vec![
                 ::protobuf::reflect::accessor::make_simple_field_accessor::<
-                _,
-                ::protobuf::types::ProtobufTypeString,
+                    _,
+                    ::protobuf::types::ProtobufTypeString,
                 >(
                     "contract_address",
                     |m: &MsgInstantiateContractResponse| &m.contract_address,
                     |m: &mut MsgInstantiateContractResponse| &mut m.contract_address,
                 ),
                 ::protobuf::reflect::accessor::make_simple_field_accessor::<
-                _,
-                ::protobuf::types::ProtobufTypeBytes,
+                    _,
+                    ::protobuf::types::ProtobufTypeBytes,
                 >(
                     "data",
                     |m: &MsgInstantiateContractResponse| &m.data,
                     |m: &mut MsgInstantiateContractResponse| &mut m.data,
-                ),  
+                ),
             ];
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<MsgInstantiateContractResponse>(
                 "MsgInstantiateContractResponse",

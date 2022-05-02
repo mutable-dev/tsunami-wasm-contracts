@@ -107,12 +107,10 @@ impl Asset {
             })),
             AssetInfo::NativeToken { denom } => Ok(CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.to_string(),
-                amount: vec![
-                    Coin {
-                        denom: denom.to_string(),
-                        amount: amount,
-                    }
-                ],
+                amount: vec![Coin {
+                    denom: denom.to_string(),
+                    amount: amount,
+                }],
             })),
         }
     }

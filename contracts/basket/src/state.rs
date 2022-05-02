@@ -234,7 +234,8 @@ impl Basket {
         // Build amounts: input to price_basket
         let tokens: Vec<(BasketAsset, Price)> = self
             .assets
-            .iter().cloned()
+            .iter()
+            .cloned()
             .zip(self.get_prices(querier)?)
             .collect();
         // Following pyth naming convention of amount, but does not make much sense
