@@ -1,10 +1,7 @@
 use crate::asset::AssetInfo;
-use cosmwasm_std::{
-    to_binary, Addr, QuerierWrapper,
-    QueryRequest, StdResult, Uint128, WasmQuery,
-};
+use cosmwasm_std::{to_binary, Addr, QuerierWrapper, QueryRequest, StdResult, Uint128, WasmQuery};
 
-use cw20::{ Cw20QueryMsg, TokenInfoResponse};
+use cw20::{Cw20QueryMsg, TokenInfoResponse};
 
 // It's defined at https://github.com/terra-money/core/blob/d8e277626e74f9d6417dcd598574686882f0274c/types/assets/assets.go#L15
 const NATIVE_TOKEN_PRECISION: u8 = 6;
