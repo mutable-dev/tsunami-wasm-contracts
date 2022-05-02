@@ -214,13 +214,13 @@ impl Basket {
         total_weights
     }
 
-    pub fn match_basket_assets(&self, asset_infos: &Vec<AssetInfo>) -> Vec<BasketAsset> {
+    pub fn match_basket_assets(&self, asset_infos: &[AssetInfo]) -> Vec<BasketAsset> {
         let mut v: Vec<BasketAsset> = vec![];
         for asset in asset_infos.iter() {
             v.push(
                 self.assets
                     .iter()
-                    .find(|basket_asset| basket_asset.info.equal(&asset))
+                    .find(|basket_asset| basket_asset.info.equal(asset))
                     .expect("an asset was not found in the basket")
                     .clone(),
             )
@@ -234,8 +234,7 @@ impl Basket {
         // Build amounts: input to price_basket
         let tokens: Vec<(BasketAsset, Price)> = self
             .assets
-            .iter()
-            .map(|x| x.clone())
+            .iter().cloned()
             .zip(self.get_prices(querier)?)
             .collect();
         // Following pyth naming convention of amount, but does not make much sense

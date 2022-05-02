@@ -210,23 +210,24 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
         static DESCRIPTOR: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> =
             ::protobuf::rt::LazyV2::INIT;
         DESCRIPTOR.get(|| {
-            let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<
+            let mut fields = vec![
+                ::protobuf::reflect::accessor::make_simple_field_accessor::<
                 _,
                 ::protobuf::types::ProtobufTypeString,
-            >(
-                "contract_address",
-                |m: &MsgInstantiateContractResponse| &m.contract_address,
-                |m: &mut MsgInstantiateContractResponse| &mut m.contract_address,
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<
+                >(
+                    "contract_address",
+                    |m: &MsgInstantiateContractResponse| &m.contract_address,
+                    |m: &mut MsgInstantiateContractResponse| &mut m.contract_address,
+                ),
+                ::protobuf::reflect::accessor::make_simple_field_accessor::<
                 _,
                 ::protobuf::types::ProtobufTypeBytes,
-            >(
-                "data",
-                |m: &MsgInstantiateContractResponse| &m.data,
-                |m: &mut MsgInstantiateContractResponse| &mut m.data,
-            ));
+                >(
+                    "data",
+                    |m: &MsgInstantiateContractResponse| &m.data,
+                    |m: &mut MsgInstantiateContractResponse| &mut m.data,
+                ),  
+            ];
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<MsgInstantiateContractResponse>(
                 "MsgInstantiateContractResponse",
                 fields,
@@ -269,7 +270,7 @@ fn parse_descriptor_proto() -> ::protobuf::descriptor::FileDescriptorProto {
 }
 
 pub fn file_descriptor_proto() -> &'static ::protobuf::descriptor::FileDescriptorProto {
-    FILE_DESCRIPTOR_PROTO_LAZY.get(|| parse_descriptor_proto())
+    FILE_DESCRIPTOR_PROTO_LAZY.get(parse_descriptor_proto)
 }
 
 /// This structure describes the parameters used for instantiating

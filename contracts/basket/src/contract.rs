@@ -437,7 +437,7 @@ pub fn swap(
         .zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| offer_asset.info.equal(&asset.info))
     {
-        Some((asset, price)) => (asset.clone(), price.clone(), offer_asset.clone()),
+        Some((asset, price)) => (asset.clone(), price, offer_asset.clone()),
         None => return Err(ContractError::AssetNotInBasket),
     };
     // Determine the amount of an asset held in the contract based on our internal accounting
@@ -462,7 +462,7 @@ pub fn swap(
         .zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.equal(&asset.info))
     {
-        Some((asset, price)) => (asset.clone(), price.clone()),
+        Some((asset, price)) => (asset.clone(), price),
         None => return Err(ContractError::AssetNotInBasket),
     };
     // Determine the amount of an asset held in the contract based on our internal accounting
@@ -585,9 +585,9 @@ pub fn swap(
 pub fn calculate_fee_basis_points(
     initial_aum_value: Uint128,
     basket: &Basket,
-    initial_reserve_values: &Vec<Uint128>,
+    initial_reserve_values: &[Uint128],
     offer_or_ask_values: &Vec<Uint128>,
-    offer_or_ask_assets: &Vec<BasketAsset>,
+    offer_or_ask_assets: &[BasketAsset],
     action: Action,
 ) -> Vec<Uint128> {
     // Compute new aum_value
@@ -610,8 +610,8 @@ pub fn calculate_fee_basis_points(
     let mut fee_bps: Vec<Uint128> = vec![];
     for i in 0..offer_or_ask_assets.len() {
         let offer_or_ask_asset = offer_or_ask_assets[i].clone();
-        let initial_reserve_value = initial_reserve_values[i].clone();
-        let next_reserve_usd_value = next_reserve_usd_values[i].clone();
+        let initial_reserve_value = initial_reserve_values[i];
+        let next_reserve_usd_value = next_reserve_usd_values[i];
 
         // Compute target value based on weight, so that we may compare to the updated value
         let initial_target_lp_usd_value: Uint128 = initial_aum_value
@@ -721,7 +721,7 @@ pub fn provide_liquidity(
                     .zip(basket.get_prices(&deps.querier)?)
                     .find(|(asset, _price)| asset.info.equal(&offer_asset.info))
                 {
-                    Some((asset, price)) => (asset.clone(), price.clone()),
+                    Some((asset, price)) => (asset.clone(), price),
                     None => return Err(ContractError::AssetNotInBasket),
                 },
             )
@@ -838,7 +838,7 @@ pub fn provide_liquidity(
         mint_liquidity_token_message(
             deps.as_ref(),
             &basket,
-            env.clone(),
+            env,
             validate_addr(deps.api, &receiver)?,
             tokens_to_mint,
         )
@@ -881,31 +881,31 @@ fn mint_liquidity_token_message(
     let lp_token = basket.lp_token_address.clone();
 
     // Mint to Recipient
-    return Ok(vec![CosmosMsg::Wasm(WasmMsg::Execute {
+    Ok(vec![CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: lp_token.to_string(),
         msg: to_binary(&Cw20ExecuteMsg::Mint {
             recipient: recipient.to_string(),
             amount,
         })?,
         funds: vec![],
-    })]);
+    })])
 }
 
 pub fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {
     let output = input as i64;
     if output as u128 == input {
-        return Ok(output);
+        Ok(output)
     } else {
-        return Err(ContractError::FailedCast);
+        Err(ContractError::FailedCast)
     }
 }
 
 pub fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
     let output = input as u128;
     if output as i64 == input {
-        return Ok(output);
+        Ok(output)
     } else {
-        return Err(ContractError::FailedCast);
+        Err(ContractError::FailedCast)
     }
 }
 
