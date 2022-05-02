@@ -1,10 +1,10 @@
 use cosmwasm_std::testing::{MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    from_binary, from_slice, to_binary, Coin, Decimal, OwnedDeps, Querier, QuerierResult,
-    QueryRequest, SystemError, SystemResult, Uint128, WasmQuery,
+    from_binary, from_slice, to_binary, Coin, OwnedDeps, Querier, QuerierResult, QueryRequest,
+    SystemError, SystemResult, Uint128, WasmQuery,
 };
-use std::collections::HashMap;
 use cw20::{BalanceResponse, Cw20QueryMsg, TokenInfoResponse};
+use std::collections::HashMap;
 use terra_cosmwasm::TerraQueryWrapper;
 
 pub const MOCK_LP_DECIMALS: u8 = 6;
@@ -58,15 +58,6 @@ pub(crate) fn balances_to_map(
     balances_map
 }
 
-
-pub(crate) fn caps_to_map(caps: &[(&String, &Uint128)]) -> HashMap<String, Uint128> {
-    let mut owner_map: HashMap<String, Uint128> = HashMap::new();
-    for (denom, cap) in caps.iter() {
-        owner_map.insert(denom.to_string(), **cap);
-    }
-    owner_map
-}
-
 impl Querier for WasmMockQuerier {
     fn raw_query(&self, bin_request: &[u8]) -> QuerierResult {
         // MockQuerier doesn't support Custom, so we ignore it completely
@@ -87,54 +78,50 @@ impl WasmMockQuerier {
     pub fn handle_query(&self, request: &QueryRequest<TerraQueryWrapper>) -> QuerierResult {
         match &request {
             QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
-                {
-                    match from_binary(&msg).unwrap() {
-                        Cw20QueryMsg::TokenInfo {} => {
-                            let balances: &HashMap<String, Uint128> =
-                                match self.token_querier.balances.get(contract_addr) {
-                                    Some(balances) => balances,
-                                    None => {
-                                        return SystemResult::Err(SystemError::Unknown {});
-                                    }
-                                };
-
-                            let mut total_supply = Uint128::zero();
-
-                            for balance in balances {
-                                total_supply += *balance.1;
-                            }
-                            SystemResult::Ok(
-                                to_binary(&TokenInfoResponse {
-                                    name: "lp".to_string(),
-                                    symbol: "lp".to_string(),
-                                    decimals: MOCK_LP_DECIMALS,
-                                    total_supply: total_supply,
-                                })
-                                .into(),
-                            )
-                        }
-                        Cw20QueryMsg::Balance { address } => {
-                            let balances: &HashMap<String, Uint128> =
-                                match self.token_querier.balances.get(contract_addr) {
-                                    Some(balances) => balances,
-                                    None => {
-                                        return SystemResult::Err(SystemError::Unknown {});
-                                    }
-                                };
-
-                            let balance = match balances.get(&address) {
-                                Some(v) => v,
+                match from_binary(&msg).unwrap() {
+                    Cw20QueryMsg::TokenInfo {} => {
+                        let balances: &HashMap<String, Uint128> =
+                            match self.token_querier.balances.get(contract_addr) {
+                                Some(balances) => balances,
                                 None => {
                                     return SystemResult::Err(SystemError::Unknown {});
                                 }
                             };
 
-                            SystemResult::Ok(
-                                to_binary(&BalanceResponse { balance: *balance }).into(),
-                            )
+                        let mut total_supply = Uint128::zero();
+
+                        for balance in balances {
+                            total_supply += *balance.1;
                         }
-                        _ => panic!("DO NOT ENTER HERE"),
+                        SystemResult::Ok(
+                            to_binary(&TokenInfoResponse {
+                                name: "lp".to_string(),
+                                symbol: "lp".to_string(),
+                                decimals: MOCK_LP_DECIMALS,
+                                total_supply: total_supply,
+                            })
+                            .into(),
+                        )
                     }
+                    Cw20QueryMsg::Balance { address } => {
+                        let balances: &HashMap<String, Uint128> =
+                            match self.token_querier.balances.get(contract_addr) {
+                                Some(balances) => balances,
+                                None => {
+                                    return SystemResult::Err(SystemError::Unknown {});
+                                }
+                            };
+
+                        let balance = match balances.get(&address) {
+                            Some(v) => v,
+                            None => {
+                                return SystemResult::Err(SystemError::Unknown {});
+                            }
+                        };
+
+                        SystemResult::Ok(to_binary(&BalanceResponse { balance: *balance }).into())
+                    }
+                    _ => panic!("DO NOT ENTER HERE"),
                 }
             }
             _ => self.base.handle_query(request),
@@ -153,12 +140,5 @@ impl WasmMockQuerier {
     // Configure the mint whitelist mock querier
     pub fn with_token_balances(&mut self, balances: &[(&String, &[(&String, &Uint128)])]) {
         self.token_querier = TokenQuerier::new(balances);
-    }
-
-
-    pub fn with_balance(&mut self, balances: &[(&String, &[Coin])]) {
-        for (addr, balance) in balances {
-            self.base.update_balance(addr.to_string(), balance.to_vec());
-        }
     }
 }

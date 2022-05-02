@@ -1,38 +1,36 @@
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use cosmwasm_std::{Addr, Uint128, Decimal};
-use cw20::{Cw20Coin, MinterResponse, Cw20ReceiveMsg};
 use crate::asset::{Asset, AssetInfo};
 use crate::state::{BasketAsset, OracleInterface, TickerData};
+use cosmwasm_std::{Addr, Decimal, Uint128};
+use cw20::{Cw20Coin, Cw20ReceiveMsg, MinterResponse};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    
     /// The list of assets in the basket
     pub assets: Vec<InstantiateAssetInfo>,
     /// Name of Basket
-	pub name: String,
-	/// fee for non-stable asset perp
-	pub tax_basis_points: Uint128,
-	/// fee for stable asset perp
-	pub stable_tax_basis_points: Uint128,
-	/// base fee for mint/burning lp token
-	pub mint_burn_basis_points: Uint128,
-	/// base fee for swap
-	pub swap_fee_basis_points: Uint128,
-	/// base fee for swaping between stable assets 
-	pub stable_swap_fee_basis_points: Uint128, 
-	/// references position fees, not for funding rate, nor for getting in/out of a position
-	pub margin_fee_basis_points: Uint128, 
-	/// fee for getting liquidated, goes to liquidator in USD
-	pub liquidation_fee_usd: Uint128,
-	/// prevents gaming of oracle with hourly trades
-	pub min_profit_time: Uint128,
-	/// account that can make changes to the exchange
-	pub admin: Addr,
+    pub name: String,
+    /// fee for non-stable asset perp
+    pub tax_basis_points: Uint128,
+    /// fee for stable asset perp
+    pub stable_tax_basis_points: Uint128,
+    /// base fee for mint/burning lp token
+    pub mint_burn_basis_points: Uint128,
+    /// base fee for swap
+    pub swap_fee_basis_points: Uint128,
+    /// base fee for swaping between stable assets
+    pub stable_swap_fee_basis_points: Uint128,
+    /// references position fees, not for funding rate, nor for getting in/out of a position
+    pub margin_fee_basis_points: Uint128,
+    /// fee for getting liquidated, goes to liquidator in USD
+    pub liquidation_fee_usd: Uint128,
+    /// prevents gaming of oracle with hourly trades
+    pub min_profit_time: Uint128,
+    /// account that can make changes to the exchange
+    pub admin: Addr,
     /// The token contract code ID used for the tokens in the pool
     pub token_code_id: u64,
-
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -43,7 +41,9 @@ pub enum ExecuteMsg {
         slippage_tolerance: Option<Decimal>,
         receiver: Option<String>,
     },
-    Receive { msg: Cw20ReceiveMsg },
+    Receive {
+        msg: Cw20ReceiveMsg,
+    },
     Swap {
         sender: Addr,
         offer_asset: Asset,
@@ -51,7 +51,7 @@ pub enum ExecuteMsg {
         max_spread: Option<Decimal>,
         to: Option<Addr>,
         ask_asset: AssetInfo,
-    }
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -67,7 +67,7 @@ pub struct CountResponse {
     pub count: u8,
 }
 
-#[derive(PartialEq,Clone,Default)]
+#[derive(PartialEq, Clone, Default)]
 pub struct MsgInstantiateContractResponse {
     // message fields
     pub contract_address: String,
@@ -86,7 +86,6 @@ impl MsgInstantiateContractResponse {
         &self.contract_address
     }
 }
-
 
 impl ::protobuf::Clear for MsgInstantiateContractResponse {
     fn clear(&mut self) {
@@ -118,19 +117,31 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
         true
     }
 
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+    fn merge_from(
+        &mut self,
+        is: &mut ::protobuf::CodedInputStream<'_>,
+    ) -> ::protobuf::ProtobufResult<()> {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.contract_address)?;
-                },
+                    ::protobuf::rt::read_singular_proto3_string_into(
+                        wire_type,
+                        is,
+                        &mut self.contract_address,
+                    )?;
+                }
                 2 => {
                     ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.data)?;
-                },
+                }
                 _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
+                    ::protobuf::rt::read_unknown_or_skip_group(
+                        field_number,
+                        wire_type,
+                        is,
+                        self.mut_unknown_fields(),
+                    )?;
+                }
             };
         }
         ::std::result::Result::Ok(())
@@ -151,7 +162,10 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
         my_size
     }
 
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+    fn write_to_with_cached_sizes(
+        &self,
+        os: &mut ::protobuf::CodedOutputStream<'_>,
+    ) -> ::protobuf::ProtobufResult<()> {
         if !self.contract_address.is_empty() {
             os.write_string(1, &self.contract_address)?;
         }
@@ -193,34 +207,42 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
     }
 
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
-        descriptor.get(|| {
+        static DESCRIPTOR: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> =
+            ::protobuf::rt::LazyV2::INIT;
+        DESCRIPTOR.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<
+                _,
+                ::protobuf::types::ProtobufTypeString,
+            >(
                 "contract_address",
-                |m: &MsgInstantiateContractResponse| { &m.contract_address },
-                |m: &mut MsgInstantiateContractResponse| { &mut m.contract_address },
+                |m: &MsgInstantiateContractResponse| &m.contract_address,
+                |m: &mut MsgInstantiateContractResponse| &mut m.contract_address,
             ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<
+                _,
+                ::protobuf::types::ProtobufTypeBytes,
+            >(
                 "data",
-                |m: &MsgInstantiateContractResponse| { &m.data },
-                |m: &mut MsgInstantiateContractResponse| { &mut m.data },
+                |m: &MsgInstantiateContractResponse| &m.data,
+                |m: &mut MsgInstantiateContractResponse| &mut m.data,
             ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<MsgInstantiateContractResponse>(
                 "MsgInstantiateContractResponse",
                 fields,
-                file_descriptor_proto()
+                file_descriptor_proto(),
             )
         })
     }
 
     fn default_instance() -> &'static MsgInstantiateContractResponse {
-        static instance: ::protobuf::rt::LazyV2<MsgInstantiateContractResponse> = ::protobuf::rt::LazyV2::INIT;
-        instance.get(MsgInstantiateContractResponse::new)
+        static INSTANCE: ::protobuf::rt::LazyV2<MsgInstantiateContractResponse> =
+            ::protobuf::rt::LazyV2::INIT;
+        INSTANCE.get(MsgInstantiateContractResponse::new)
     }
 }
 
-static file_descriptor_proto_data: &'static [u8] = b"\
+static FILE_DESCRIPTOR_PROTO_DATA: &'static [u8] = b"\
     \n\x12src/response.proto\"_\n\x1eMsgInstantiateContractResponse\x12)\n\
     \x10contract_address\x18\x01\x20\x01(\tR\x0fcontractAddress\x12\x12\n\
     \x04data\x18\x02\x20\x01(\x0cR\x04dataJ\xf8\x02\n\x06\x12\x04\0\0\x08\
@@ -238,17 +260,16 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x03\x07\x0f\x10b\x06proto3\
 ";
 
-static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
-
+static FILE_DESCRIPTOR_PROTO_LAZY: ::protobuf::rt::LazyV2<
+    ::protobuf::descriptor::FileDescriptorProto,
+> = ::protobuf::rt::LazyV2::INIT;
 
 fn parse_descriptor_proto() -> ::protobuf::descriptor::FileDescriptorProto {
-    ::protobuf::Message::parse_from_bytes(file_descriptor_proto_data).unwrap()
+    ::protobuf::Message::parse_from_bytes(FILE_DESCRIPTOR_PROTO_DATA).unwrap()
 }
 
 pub fn file_descriptor_proto() -> &'static ::protobuf::descriptor::FileDescriptorProto {
-    file_descriptor_proto_lazy.get(|| {
-        parse_descriptor_proto()
-    })
+    FILE_DESCRIPTOR_PROTO_LAZY.get(|| parse_descriptor_proto())
 }
 
 /// This structure describes the parameters used for instantiating
@@ -269,9 +290,9 @@ pub struct InstantiateAssetInfo {
     pub max_asset_amount: Uint128,
     /// If the asset is a stable token
     pub is_asset_stable: bool,
-    /// If the asset can be shorted 
+    /// If the asset can be shorted
     pub is_asset_shortable: bool,
-    /// Address of the oracle for the asset 
+    /// Address of the oracle for the asset
     pub oracle: OracleInterface,
     /// Backup oracle address for the asset
     pub backup_oracle: OracleInterface,
@@ -279,9 +300,8 @@ pub struct InstantiateAssetInfo {
     pub ticker_data: TickerData,
 }
 
-
-/// This structure describes the parameters used for a message 
-/// creating a LP Token. 
+/// This structure describes the parameters used for a message
+/// creating a LP Token.
 /// InstantiateLpMsg
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateLpMsg {
@@ -311,5 +331,3 @@ pub enum Cw20HookMsg {
     /// Withdraw liquidity from the pool
     WithdrawLiquidity { basket_asset: BasketAsset },
 }
-
-

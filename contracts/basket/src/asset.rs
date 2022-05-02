@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use cosmwasm_std::{
-    to_binary, Addr, Api, BankMsg, Coin, CosmosMsg, Decimal, Deps, MessageInfo, QuerierWrapper,
-    StdError, StdResult, Uint128, WasmMsg,
+    to_binary, Addr, Api, BankMsg, Coin, CosmosMsg, Decimal, MessageInfo, QuerierWrapper, StdError,
+    StdResult, Uint128, WasmMsg,
 };
-use cw20::{Cw20ExecuteMsg, Cw20QueryMsg, MinterResponse};
+use cw20::Cw20ExecuteMsg;
 use terra_cosmwasm::TerraQuerier;
 
 /// UST token denomination
@@ -93,7 +93,7 @@ impl Asset {
     /// * **querier** is an object of type [`QuerierWrapper`]
     ///
     /// * **recipient** is the address where the funds will be sent.
-    pub fn into_msg(self, querier: &QuerierWrapper, recipient: Addr) -> StdResult<CosmosMsg> {
+    pub fn into_msg(self, _querier: &QuerierWrapper, recipient: Addr) -> StdResult<CosmosMsg> {
         let amount = self.amount;
 
         match &self.info {
@@ -107,12 +107,10 @@ impl Asset {
             })),
             AssetInfo::NativeToken { denom } => Ok(CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.to_string(),
-                amount: vec![
-                    Coin {
-                        denom: denom.to_string(),
-                        amount: amount,
-                    }
-                ],
+                amount: vec![Coin {
+                    denom: denom.to_string(),
+                    amount: amount,
+                }],
             })),
         }
     }
