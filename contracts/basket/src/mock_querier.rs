@@ -88,15 +88,12 @@ impl WasmMockQuerier {
         match &request {
             QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
                 {
-                    println!("contract_addr {} msg {}", contract_addr, msg);
                     match from_binary(&msg).unwrap() {
                         Cw20QueryMsg::TokenInfo {} => {
-                            println!("in token info msg");
                             let balances: &HashMap<String, Uint128> =
                                 match self.token_querier.balances.get(contract_addr) {
                                     Some(balances) => balances,
                                     None => {
-                                        println!("none");
                                         return SystemResult::Err(SystemError::Unknown {});
                                     }
                                 };

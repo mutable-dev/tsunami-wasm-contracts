@@ -15,13 +15,11 @@ const NATIVE_TOKEN_PRECISION: u8 = 6;
 ///
 /// * **contract_addr** is an object of type [`Addr`] which is the token contract address.
 pub fn query_supply(querier: &QuerierWrapper, contract_addr: Addr) -> StdResult<Uint128> {
-    println!("about to query supply");
     let res: TokenInfoResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: String::from(contract_addr),
         msg: to_binary(&Cw20QueryMsg::TokenInfo {})?,
     }))?;
 
-    println!("got total supply");
     Ok(res.total_supply)
 }
 

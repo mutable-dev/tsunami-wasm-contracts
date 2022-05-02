@@ -83,7 +83,6 @@ pub fn execute(
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     let mut basket: Basket = BASKET.load(deps.storage)?;
 
-    println!("basket.lp_token_address: {}", basket.lp_token_address);
     if basket.lp_token_address != Addr::unchecked("") {
         return Err(ContractError::Unauthorized);
     }
@@ -121,15 +120,12 @@ pub fn withdraw_liquidity(
 
     // Retrieve ask asset
     let assets = basket.assets.clone();
-    println!("before query token precision");
     let ask_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
-    println!("after query token precision");
     let ask_asset_with_price: (BasketAsset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.info.equal(&asset.info)) {
             Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    println!("after ask_asset_with_price");
     // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -142,12 +138,10 @@ pub fn withdraw_liquidity(
             USD_VALUE_PRECISION
         ).expect("couldn't price ask asset")
     );
-    println!("after ask_asset_value_in_contract");
 
 
     // Calculate gross asset return
     let mut redemption_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
-    println!("after demption value");
 
     // TODO: Calculate fee_bps
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
@@ -185,7 +179,6 @@ pub fn withdraw_liquidity(
     let attributes = vec![
         attr("action", "withdraw_liquidity"),
         attr("sender", sender.as_str()),
-        attr("redemption_amount", &redemption_amount.to_string()),
         attr(
             "redemption_asset",
             format!("{}", redemption_asset),
@@ -226,7 +219,6 @@ fn instantiate_lp(
             code_id: msg.token_code_id,
             msg: to_binary(&InstantiateLpMsg {
                 name: token_name,
-                // TODO: replace with some generator, or perhaps with some admin-specified value in instantiate msg
                 symbol: "TLP".to_string(),
                 decimals: LP_DECIMALS,
                 initial_balances: vec![],
@@ -321,10 +313,6 @@ pub fn receive_cw20(
             to,
             ask_asset,
         }) => {
-            println!("belief_price: {:?}", belief_price);
-            println!("max_spread: {:?}", max_spread);
-            println!("to: {:?}", to);
-            println!("ask_asset: {}", ask_asset);
 
             // Only asset contract can execute this message
             let mut authorized: bool = false;
@@ -461,7 +449,6 @@ pub fn swap(
             Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
-    
     // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -476,7 +463,6 @@ pub fn swap(
     );
 
     // TODO: Compute offer value and ask fee 
-    // let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
     let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.price as u128);
     let price_basket = Price::price_basket(&[(
         offer_asset_with_price.1, 
@@ -503,7 +489,7 @@ pub fn swap(
 
 
     // Calculate post-fee USD value, then convert USD value to number of tokens.
-    let refund_value = user_offer_value
+    let return_asset_value = user_offer_value
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_bps - offer_fee_bps,
             BASIS_POINTS_PRECISION
@@ -511,12 +497,12 @@ pub fn swap(
     // Get value of ask per unit usd, e.g. microUSD
     let ask_per_unit_usd = ask_asset_with_price.1.price as u128;
     // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
-    let refund_amount = refund_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
+    let return_asset_amount = return_asset_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
 
     // Construct asset type and convert to message to `to` or `sender`
     let return_asset = Asset {
         info: ask_asset_with_price.0.info.clone(),
-        amount: refund_amount,
+        amount: return_asset_amount,
     };
     let receiver = to.unwrap_or_else(|| sender.clone());
     let messages: Vec<CosmosMsg> =
@@ -528,14 +514,13 @@ pub fn swap(
     }
 
     match basket.assets.iter_mut().find(|asset| ask_asset.equal(&asset.info)) {
-        Some(offer_asset) => { offer_asset.available_reserves -= refund_amount },
+        Some(offer_asset) => { offer_asset.available_reserves -= return_asset_amount },
         None => {}
     }
 
     // Save state
     BASKET.save(deps.storage, &basket)?;
 
-    // 
     Ok(Response::new()
         .add_messages(
             // 1. send collateral tokens from the contract to a user
@@ -548,7 +533,7 @@ pub fn swap(
         .add_attribute("offer_asset", offer_asset.info.to_string())
         .add_attribute("ask_asset", ask_asset_with_price.0.info.to_string())
         .add_attribute("offer_amount", offer_asset.amount.to_string())
-        .add_attribute("return_amount", refund_amount.to_string())
+        .add_attribute("return_asset_amount", return_asset_amount.to_string())
         .add_attribute("offer_bps", offer_fee_bps.to_string())
         .add_attribute("ask_bps", ask_fee_bps.to_string())
     )
@@ -747,7 +732,6 @@ pub fn provide_liquidity(
     // Retrieve LP token supply
     let lp_supply: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
 
-    println!("total_user_deposit_value: {}", total_user_deposit_value);
     // Calculate share -  What exactly is share?
     let tokens_to_mint: Uint128 = if lp_supply.is_zero() {
 
