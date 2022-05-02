@@ -702,7 +702,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
     let deposit_asset1 = Asset { info: luna_info.clone(), amount: Uint128::new(luna_amount1) };
     let deposit_asset2 = Asset { info: luna_info.clone(), amount: Uint128::new(luna_amount2) };
 
-    println!("deposit deposit deposit");
     let deposit_msg1 = ExecuteMsg::DepositLiquidity { 
         assets: vec!(deposit_asset1.clone()),
         slippage_tolerance: None, 
@@ -745,8 +744,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
         assert_eq!(actual_attribute, expected_attribute);
     }
 
-
-    // swap_res.messages[0].msg
     match &deposit_res2.messages[0].msg {
         CosmosMsg::Wasm(WasmMsg::Execute{contract_addr, msg, funds}) => {
             assert_eq!(contract_addr, FAKE_LP_TOKEN_ADDRESS);
@@ -766,7 +763,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
         max_spread: None,
         belief_price: None,
     };
-    println!("swaps swaps swaps");
 
     let swapper = mock_info("first_depositor", &coins(10_000_000, "ust"));
     let swap_res = execute(deps.as_mut(), mock_env(), swapper, swap).unwrap();
@@ -784,8 +780,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
     assert_eq!(offer_bps, "0");
     assert_eq!(ask_bps, "0");
 
-
-    // swap_res.messages[0].msg
     match &swap_res.messages[0].msg {
         CosmosMsg::Bank(BankMsg::Send{to_address, amount}) => {
             assert_eq!(amount[0].amount, Uint128::new(100_000));
@@ -797,7 +791,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(basket.assets[0].available_reserves, Uint128::new(10_900_000));
     assert_eq!(basket.assets[1].available_reserves, Uint128::new(10_000_000));
-    println!("withdrawing withdrawing withdrawing");
     let withdraw = ExecuteMsg::Receive { 
         msg: Cw20ReceiveMsg {
             amount: Uint128::new(100_000),
@@ -820,16 +813,17 @@ fn multiple_deposits_and_swap_and_withdraw() {
         ),
     ]);
         
-    let withdrawer = mock_info(FAKE_LP_TOKEN_ADDRESS, &coins(10_000_000, "ust"));
+    let empty_coins: [Coin;0] = [];
+    let withdrawer = mock_info(FAKE_LP_TOKEN_ADDRESS, &empty_coins);
     let withdraw_res = execute(deps.as_mut(), mock_env(), withdrawer, withdraw).unwrap();
 
-    println!("withdraw_res.attributes {:?}", withdraw_res.attributes);
     let withdraw_redemption_asset = &withdraw_res.attributes[2].value;
     let withdraw_fee_bps = &withdraw_res.attributes[4].value;
     assert_eq!(withdraw_redemption_asset, "10000");
+    // TODO: This is probably not enforcing a fee properly as it is set to 0
+    // should investigate and ensure that we are calculating the correct fee in this case
     assert_eq!(withdraw_fee_bps, "0");
 
-    println!("msg {:?}", withdraw_res.messages);
     match &withdraw_res.messages[0].msg {
         CosmosMsg::Bank(BankMsg::Send{to_address, amount}) => {
             assert_eq!(to_address, sender);
