@@ -1,57 +1,12 @@
-use crate::asset::{Asset, AssetInfo};
-use crate::state::{BasketAsset, OracleInterface, TickerData};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw20::{Cw20Coin, Cw20ReceiveMsg, MinterResponse};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InstantiateMsg {
-    /// The list of assets in the basket
-    pub assets: Vec<InstantiateAssetInfo>,
-    /// Name of Basket
-    pub name: String,
-    /// fee for non-stable asset perp
-    pub tax_basis_points: Uint128,
-    /// fee for stable asset perp
-    pub stable_tax_basis_points: Uint128,
-    /// base fee for mint/burning lp token
-    pub mint_burn_basis_points: Uint128,
-    /// base fee for swap
-    pub swap_fee_basis_points: Uint128,
-    /// base fee for swaping between stable assets
-    pub stable_swap_fee_basis_points: Uint128,
-    /// references position fees, not for funding rate, nor for getting in/out of a position
-    pub margin_fee_basis_points: Uint128,
-    /// fee for getting liquidated, goes to liquidator in USD
-    pub liquidation_fee_usd: Uint128,
-    /// prevents gaming of oracle with hourly trades
-    pub min_profit_time: Uint128,
-    /// account that can make changes to the exchange
-    pub admin: Addr,
-    /// The token contract code ID used for the tokens in the pool
-    pub token_code_id: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    DepositLiquidity {
-        assets: Vec<Asset>,
-        slippage_tolerance: Option<Decimal>,
-        receiver: Option<String>,
-    },
-    Receive {
-        msg: Cw20ReceiveMsg,
-    },
-    Swap {
-        sender: Addr,
-        offer_asset: Asset,
-        belief_price: Option<Decimal>,
-        max_spread: Option<Decimal>,
-        to: Option<Addr>,
-        ask_asset: AssetInfo,
-    },
+    Receive { msg: Cw20ReceiveMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -273,34 +228,6 @@ pub fn file_descriptor_proto() -> &'static ::protobuf::descriptor::FileDescripto
     FILE_DESCRIPTOR_PROTO_LAZY.get(parse_descriptor_proto)
 }
 
-/// This structure describes the parameters used for instantiating
-/// the assets in an LP
-/// InstantiateAssetInfo
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InstantiateAssetInfo {
-    /// Asset Info
-    pub info: AssetInfo,
-    /// Token address
-    pub address: Addr,
-    /// Token weight
-    pub weight: Uint128,
-    /// The minimum amount of profit a position with the asset needs
-    /// to be in before closing otherwise, no profit
-    pub min_profit_basis_points: Uint128,
-    /// Maximum amount of asset that can be held in the LP
-    pub max_asset_amount: Uint128,
-    /// If the asset is a stable token
-    pub is_asset_stable: bool,
-    /// If the asset can be shorted
-    pub is_asset_shortable: bool,
-    /// Address of the oracle for the asset
-    pub oracle: OracleInterface,
-    /// Backup oracle address for the asset
-    pub backup_oracle: OracleInterface,
-    /// Pyth address information for the asset
-    pub ticker_data: TickerData,
-}
-
 /// This structure describes the parameters used for a message
 /// creating a LP Token.
 /// InstantiateLpMsg
@@ -316,19 +243,4 @@ pub struct InstantiateLpMsg {
     pub initial_balances: Vec<Cw20Coin>,
     /// Minting controls specified in a [`MinterResponse`] structure
     pub mint: Option<MinterResponse>,
-}
-
-/// This structure describes a CW20 hook message.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Cw20HookMsg {
-    /// Swap a given amount of asset
-    Swap {
-        belief_price: Option<Decimal>,
-        max_spread: Option<Decimal>,
-        to: Option<String>,
-        ask_asset: AssetInfo,
-    },
-    /// Withdraw liquidity from the pool
-    WithdrawLiquidity { basket_asset: BasketAsset },
 }

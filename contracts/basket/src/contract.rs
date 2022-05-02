@@ -158,7 +158,8 @@ pub fn withdraw_liquidity(
     );
 
     // Calculate gross asset return
-    let mut redemption_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
+    let mut redemption_value: Uint128 =
+        basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
 
     // TODO: Calculate fee_bps
     let initial_aum_value: Uint128 = safe_price_to_uint128(basket.calculate_aum(&deps.querier)?);
@@ -197,10 +198,7 @@ pub fn withdraw_liquidity(
     let attributes = vec![
         attr("action", "withdraw_liquidity"),
         attr("sender", sender.as_str()),
-        attr(
-            "redemption_asset",
-            format!("{}", redemption_asset),
-        ),
+        attr("redemption_asset", format!("{}", redemption_asset)),
         attr("fee_bps", &fee_bps.to_string()),
     ];
 
@@ -217,9 +215,9 @@ fn validate_addr(_api: &dyn Api, sender: &str) -> Result<Addr, ContractError> {
 /// Produces unit price of USD, in units of `USD_VALUE_PRECISION`
 pub fn get_unit_price() -> Price {
     Price {
-        price: 1,//10_i64.pow(-USD_VALUE_PRECISION as u32),
+        price: 1, //10_i64.pow(-USD_VALUE_PRECISION as u32),
         expo: USD_VALUE_PRECISION,
-        conf: 0
+        conf: 0,
     }
 }
 
@@ -517,7 +515,8 @@ pub fn swap(
     // Get value of ask per unit usd, e.g. microUSD
     let ask_per_unit_usd = ask_asset_with_price.1.price as u128;
     // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
-    let return_asset_amount = return_asset_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
+    let return_asset_amount =
+        return_asset_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
 
     // Construct asset type and convert to message to `to` or `sender`
     let return_asset = Asset {
@@ -574,18 +573,18 @@ pub fn swap(
 // 6. initialAmount is close to targetAmount, action reduces balance largely => low tax.
 // 7. initialAmount is above targetAmount, nextAmount is below targetAmount and vice versa.
 // 8. a large swap should have similar fees as the same trade split into multiple smaller swaps.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `initial_aum_value` - The total value (normalized in USD) of the Basket's assets
 /// * `basket` - The Basket of assets being traded against
 /// * `initial_reserve_values` - The reserve values (normalized in USD) for each BasketAsset
 /// being traded against. This includes occupied and unoccupied assets in the pool.
 /// * `offer_or_ask_values` - The USD amount the user wants to trade for each BasketAsset
 /// * `offer_or_ask_assets` - The BasketAsset's that are being traded against
-/// * `action` - Offer|Ask used to determine if the user is buying or selling the assets, 
+/// * `action` - Offer|Ask used to determine if the user is buying or selling the assets,
 /// respectively.
-/// 
+///
 /// CHECK: types here are bad, and conversions too many, need to consolidate.
 /// CHECK: that we are doing the correct math when calculating
 /// fees that should be charged .
