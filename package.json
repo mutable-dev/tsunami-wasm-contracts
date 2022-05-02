@@ -3,7 +3,15 @@
   "version": "1.0.0",
   "description": "",
   "dependencies": {
-    "@terra-money/terrain": "0.1.0"
+    "@terra-money/terra.js": "^2.1.23",
+    "@terra-money/terrain": "0.1.0",
+    "isomorphic-fetch": "^3.0.0"
+  },
+  "scripts": {
+    "query_basket": "node ./tasks/query_basket.js",
+    "query_lp": "node ./tasks/query_lp.js",
+    "provide_liquidity": "node ./tasks/provide_liquidity.js",
+    "swap": "node ./tasks/swap.js"
   },
   "workspaces": [
     "frontend"
