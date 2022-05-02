@@ -276,6 +276,7 @@ impl Basket {
 		if cfg!(feature = "test") {
 			Ok(Uint128::from(1_u8))
 		} else {
+			println!("querying suupply real");
 			Ok(query_supply(querier, contract_addr)?)
 		}
 	}
@@ -286,9 +287,11 @@ impl Basket {
 		// Calculate aum in USD, in units of USD_VALUE_PRECISION
 		let aum_value: Uint128 = safe_price_to_Uint128(self.calculate_aum(querier)?);
 
+		println!("aum_value: {}", aum_value);
 		// Calculate value of lp_amount lp tokens in USD, in units of USD_VALUE_PRECISION
 		let redeem_value: Uint128 = lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, info)?);
 
+		println!("redeem_value: {}", redeem_value);
 		Ok(redeem_value)
 	}
 

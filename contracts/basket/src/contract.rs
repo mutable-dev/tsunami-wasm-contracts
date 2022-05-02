@@ -83,6 +83,7 @@ pub fn execute(
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     let mut basket: Basket = BASKET.load(deps.storage)?;
 
+    println!("basket.lp_token_address: {}", basket.lp_token_address);
     if basket.lp_token_address != Addr::unchecked("") {
         return Err(ContractError::Unauthorized);
     }
@@ -120,12 +121,15 @@ pub fn withdraw_liquidity(
 
     // Retrieve ask asset
     let assets = basket.assets.clone();
+    println!("before query token precision");
     let ask_decimals = query_token_precision(&deps.querier, &ask_asset.info)? as i32;
+    println!("after query token precision");
     let ask_asset_with_price: (BasketAsset, Price) = match assets.iter().zip(basket.get_prices(&deps.querier)?)
         .find(|(asset, _price)| ask_asset.info.equal(&asset.info)) {
             Some((asset, price)) => (asset.clone(), price.clone()),
             None => return Err(ContractError::AssetNotInBasket)
     };
+    println!("after ask_asset_with_price");
     // Determine the amount of an asset held in the contract based on our internal accounting
     let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
         Price::price_basket(
@@ -138,11 +142,12 @@ pub fn withdraw_liquidity(
             USD_VALUE_PRECISION
         ).expect("couldn't price ask asset")
     );
+    println!("after ask_asset_value_in_contract");
 
 
     // Calculate gross asset return
     let mut redemption_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
-
+    println!("after demption value");
 
     // TODO: Calculate fee_bps
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
@@ -159,9 +164,9 @@ pub fn withdraw_liquidity(
     redemption_value = redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
     // milli-USDs per token
     let invert_price: Price = get_unit_price().div(&ask_asset_with_price.1).unwrap();
-    let refund_amount = redemption_value / safe_price_to_Uint128(invert_price);
+    let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price);
     let redemption_asset = Asset {
-        amount: refund_amount,
+        amount: redemption_amount,
         info: ask_asset.info.clone()
     };
 
@@ -180,7 +185,7 @@ pub fn withdraw_liquidity(
     let attributes = vec![
         attr("action", "withdraw_liquidity"),
         attr("sender", sender.as_str()),
-        attr("withdrawn_share", &amount.to_string()),
+        attr("redemption_amount", &redemption_amount.to_string()),
         attr(
             "redemption_asset",
             format!("{}", redemption_asset),
@@ -316,6 +321,10 @@ pub fn receive_cw20(
             to,
             ask_asset,
         }) => {
+            println!("belief_price: {:?}", belief_price);
+            println!("max_spread: {:?}", max_spread);
+            println!("to: {:?}", to);
+            println!("ask_asset: {}", ask_asset);
 
             // Only asset contract can execute this message
             let mut authorized: bool = false;
