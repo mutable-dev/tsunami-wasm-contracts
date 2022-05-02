@@ -143,7 +143,6 @@ pub fn withdraw_liquidity(
     // Calculate gross asset return
     let mut redemption_value: Uint128 = basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
 
-
     // TODO: Calculate fee_bps
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
     let fee_bps: Uint128 = calculate_fee_basis_points(
@@ -159,15 +158,15 @@ pub fn withdraw_liquidity(
     redemption_value = redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
     // milli-USDs per token
     let invert_price: Price = get_unit_price().div(&ask_asset_with_price.1).unwrap();
-    let refund_amount = redemption_value / safe_price_to_Uint128(invert_price);
-    let refund_asset = Asset {
-        amount: refund_amount,
+    let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price);
+    let redemption_asset = Asset {
+        amount: redemption_amount,
         info: ask_asset.info.clone()
     };
 
     // Update the asset info
     let messages: Vec<CosmosMsg> = vec![
-        refund_asset
+        redemption_asset
             .clone()
             .into_msg(&deps.querier, sender.clone())?,
         CosmosMsg::Wasm(WasmMsg::Execute {
@@ -180,11 +179,11 @@ pub fn withdraw_liquidity(
     let attributes = vec![
         attr("action", "withdraw_liquidity"),
         attr("sender", sender.as_str()),
-        attr("withdrawn_share", &amount.to_string()),
         attr(
-            "refund_asset",
-            format!("{}", refund_asset),
+            "redemption_asset",
+            format!("{}", redemption_asset),
         ),
+        attr("fee_bps", &fee_bps.to_string()),
     ];
 
     Ok(Response::new()
@@ -204,8 +203,8 @@ fn validate_addr(
 /// Produces unit price of USD, in units of `USD_VALUE_PRECISION`
 pub fn get_unit_price() -> Price {
     Price {
-        price: 10_i64.pow(-USD_VALUE_PRECISION as u32),
-        expo: 0,
+        price: 1,//10_i64.pow(-USD_VALUE_PRECISION as u32),
+        expo: USD_VALUE_PRECISION,
         conf: 0
     }
 }
@@ -220,7 +219,7 @@ fn instantiate_lp(
             code_id: msg.token_code_id,
             msg: to_binary(&InstantiateLpMsg {
                 name: token_name,
-                symbol: "NLP".to_string(),
+                symbol: "TLP".to_string(),
                 decimals: LP_DECIMALS,
                 initial_balances: vec![],
                 mint: Some(MinterResponse {
@@ -464,8 +463,13 @@ pub fn swap(
     );
 
     // TODO: Compute offer value and ask fee 
-    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?);
-    let user_offer_value: Uint128 = safe_price_to_Uint128(Price::price_basket(&[(offer_asset_with_price.1, safe_u128_to_i64(offer_asset.amount.u128()).unwrap(), -offer_decimals)], USD_VALUE_PRECISION).unwrap());
+    let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.price as u128);
+    let price_basket = Price::price_basket(&[(
+        offer_asset_with_price.1, 
+        safe_u128_to_i64(offer_asset.amount.u128()).unwrap(),
+        -offer_decimals
+    )], USD_VALUE_PRECISION).unwrap();
+    let user_offer_value = Uint128::new(price_basket.price as u128);
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value, 
         &basket, 
@@ -485,22 +489,23 @@ pub fn swap(
 
 
     // Calculate post-fee USD value, then convert USD value to number of tokens.
-    let refund_value = user_offer_value
+    let return_asset_value = user_offer_value
         .multiply_ratio(
             BASIS_POINTS_PRECISION - ask_fee_bps - offer_fee_bps,
             BASIS_POINTS_PRECISION
     );
-    let invert_price: Price = get_unit_price().div(&offer_asset_with_price.1).unwrap();
-    let refund_amount = refund_value / safe_price_to_Uint128(invert_price);
+    // Get value of ask per unit usd, e.g. microUSD
+    let ask_per_unit_usd = ask_asset_with_price.1.price as u128;
+    // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
+    let return_asset_amount = return_asset_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
 
-
-    // Compute the tax for the receiving asset (if it is a native one)
+    // Construct asset type and convert to message to `to` or `sender`
     let return_asset = Asset {
         info: ask_asset_with_price.0.info.clone(),
-        amount: refund_amount,
+        amount: return_asset_amount,
     };
     let receiver = to.unwrap_or_else(|| sender.clone());
-    let mut messages: Vec<CosmosMsg> =
+    let messages: Vec<CosmosMsg> =
         vec![return_asset.into_msg(&deps.querier, receiver.clone())?];
 
     match basket.assets.iter_mut().find(|asset| offer_asset.info.equal(&asset.info)) {
@@ -509,11 +514,13 @@ pub fn swap(
     }
 
     match basket.assets.iter_mut().find(|asset| ask_asset.equal(&asset.info)) {
-        Some(offer_asset) => { offer_asset.available_reserves -= refund_amount },
+        Some(offer_asset) => { offer_asset.available_reserves -= return_asset_amount },
         None => {}
     }
 
-    // 
+    // Save state
+    BASKET.save(deps.storage, &basket)?;
+
     Ok(Response::new()
         .add_messages(
             // 1. send collateral tokens from the contract to a user
@@ -526,10 +533,9 @@ pub fn swap(
         .add_attribute("offer_asset", offer_asset.info.to_string())
         .add_attribute("ask_asset", ask_asset_with_price.0.info.to_string())
         .add_attribute("offer_amount", offer_asset.amount.to_string())
-        .add_attribute("return_amount", refund_value.to_string())
-        //.add_attribute("spread_amount", spread_amount.to_string())
-        //.add_attribute("commission_amount", commission_amount.to_string())
-        //.add_attribute("maker_fee_amount", maker_fee_amount.to_string()))
+        .add_attribute("return_asset_amount", return_asset_amount.to_string())
+        .add_attribute("offer_bps", offer_fee_bps.to_string())
+        .add_attribute("ask_bps", ask_fee_bps.to_string())
     )
 }
 
@@ -678,11 +684,11 @@ pub fn provide_liquidity(
     let offer_assets_with_price: Vec<(BasketAsset, Price)> = {
         let mut v: Vec<(BasketAsset, Price)>= vec![];
 
-        for asset in &offer_assets {
+        for offer_asset in &offer_assets {
             v.push(match basket.assets
                 .iter()
                 .zip(basket.get_prices(&deps.querier)?)
-                .find(|(asset, _price)| asset.info.equal(&asset.info)) {
+                .find(|(asset, _price)| asset.info.equal(&offer_asset.info)) {
                     Some((asset, price)) => (asset.clone(), price.clone()),
                     None => return Err(ContractError::AssetNotInBasket)
                 }
@@ -713,8 +719,9 @@ pub fn provide_liquidity(
     // Value of user deposits
     let user_deposit_values: Vec<Uint128> = offer_assets_with_price
         .iter()
+        .zip(offer_assets.clone())
         .enumerate()
-        .map(|(i, (offer_asset_with_price, price))| 
+        .map(|(i, ((offer_asset_with_price, price), offer_asset))| 
             safe_price_to_Uint128(
                     {
                         assert!(offer_assets[i].info.equal(&offer_asset_with_price.info));
@@ -722,9 +729,9 @@ pub fn provide_liquidity(
                             &[(
                                 *price, 
                                 safe_u128_to_i64(
-                                    offer_asset_with_price.available_reserves.u128() + offer_asset_with_price.occupied_reserves.u128()
+                                    offer_asset.amount.u128()
                                 ).unwrap(),
-                                -(query_token_precision(&deps.querier, &offer_asset_with_price.info).unwrap() as i32)
+                                -(query_token_precision(&deps.querier, &offer_asset.info).unwrap() as i32)
                             )],
                             USD_VALUE_PRECISION
                     ).unwrap()
@@ -733,13 +740,6 @@ pub fn provide_liquidity(
         )
         .collect();
     let total_user_deposit_value: Uint128 = user_deposit_values.iter().sum();
-    
-    // Begin calculating amount of LP token to mint
-    let new_aum_value = initial_aum_value + total_user_deposit_value;
-
-    // Get price feeds, prices of basket assets
-    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
-    let prices: Vec<Price> = basket.get_prices(&deps.querier)?;
 
     // Retrieve LP token supply
     let lp_supply: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
@@ -748,7 +748,10 @@ pub fn provide_liquidity(
     let tokens_to_mint: Uint128 = if lp_supply.is_zero() {
 
         // Handle deposit into empty basket at 1:1 USD_VALUE_PRECISION mint. First deposit gets zero fees
-        total_user_deposit_value
+        total_user_deposit_value.multiply_ratio(
+            10_u128.pow(LP_DECIMALS as u32),
+            10_u128.pow(-USD_VALUE_PRECISION as u32),
+        )
 
     } else {
 
@@ -882,6 +885,8 @@ pub fn safe_price_to_Uint128(
 
     // Positive price
     assert!(price.price >= 0, "amount must be non-negative");
+    return Uint128::new(price.price as u128);
+
     let amount: u128 = price.price as u128;
 
     if price.expo >= 0 {

@@ -247,6 +247,7 @@ impl Basket {
 
 		// Build amounts: input to price_basket
 		let tokens: Vec<(BasketAsset, Price)> = self.assets.iter().map(|x| x.clone()).zip(self.get_prices(querier)?).collect();
+		// Following pyth naming convention of amount, but does not make much sense
 		let amounts: &[(Price, i64, i32)] = &tokens
 			.iter()
 			.map(|(basket_asset, price)| (
@@ -367,6 +368,7 @@ impl OracleInterface {
 	/// However it may make more sense to abstract out the usage of price_feeds with this,
 	/// so that users of Basket only ever have to work with Pyth Price structs instead of messing with PriceFeeds
 	pub fn get_price(&self, querier: &QuerierWrapper) -> Result<Price, ContractError> {
+
 		match self {
 			Self::Pyth{ addr, price_id } => {
 				let price_feed = query_price_feed(querier, addr.to_string(), *price_id)?.price_feed;
