@@ -1,14 +1,14 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Timestamp, StdResult};
+use cw_storage_plus::{Item, Map};
+use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo, safe_u128_to_i64};
 use crate::price::PythPrice;
 use crate::contract::USD_VALUE_PRECISION;
-use crate::error::ContractError;
 use crate::msg::{InstantiateAssetInfo, InstantiateMsg};
 use crate::querier::{query_supply, query_token_precision};
-use cosmwasm_std::{Addr, QuerierWrapper, StdResult, Uint128};
-use cw_storage_plus::Item;
 use phf::phf_map;
 use pyth_sdk_terra::{query_price_feed, Price, PriceFeed, PriceIdentifier, PriceStatus};
 
@@ -66,7 +66,7 @@ pub struct BasketAsset {
     pub cumulative_funding_rate: Uint128,
 
     /// Last time the funding rate was updated
-    pub last_funding_time: Uint128,
+    pub last_funding_time: Timestamp,
 
     /// Account with price oracle data on the asset
     pub oracle: OracleInterface,
@@ -376,7 +376,60 @@ impl OracleInterface {
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, JsonSchema)]
+pub struct Position {
+	pub owner: Addr,
+	/// The address of the collateral that was use to open the position 
+	pub collateral_mint: AssetInfo,
+	/// The size of the position in the tokens decimals
+	pub size: Uint128,
+	/// The average price paid to open
+	/// This value is normalized with PRICE_DECIMALS and is ALWAYS in USD
+	pub average_price: Uint128,
+	/// how much of the delivery asset is reserved
+	/// In the delivery asset's Mint decimals 
+	pub reserve_amount: Uint128,
+	/// Entry number that is compared to ever increasing number cumulative 
+	pub entry_funding_rate: Uint128,
+	/// Funding rates to determine the owed funding fees
+	pub realised_pnl: Uint128, 
+	/// Only used when reducing collateral
+	pub in_profit: bool,
+	/// Keeps track of the the last time fees were calculated for the position
+	pub last_increased_time: Timestamp,
+	/// The amount of collateral on a position
+	pub collateral_amount: Uint128,
+}
+
+impl Position {
+	pub fn new(
+		owner: Addr, 
+		collateral_mint: &AssetInfo
+	)	-> Self {
+		Position {
+			owner,
+			collateral_mint: collateral_mint.clone(),
+			size: Uint128::new(0),
+			average_price: Uint128::new(0),
+			reserve_amount: Uint128::new(0),
+			entry_funding_rate: Uint128::new(0),
+			realised_pnl: Uint128::new(0),
+			in_profit: false,
+			last_increased_time: Timestamp::from_nanos(0),
+			collateral_amount: Uint128::new(0),
+		}
+	}
+
+	// TODO: Implement this where it takes in a price of an asset
+	// and determines whether or not the position needs to be liquidated
+	pub fn validate_health(&self, price: i64, exponent: i32 ) -> bool {
+		true
+	}
+}
+
 pub const BASKET: Item<Basket> = Item::new("basket");
+
+pub const POSITIONS: Map<(&[u8], &[u8], String), Position> = Map::new("positions");
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct TickerData {

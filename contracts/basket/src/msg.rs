@@ -50,6 +50,12 @@ pub enum ExecuteMsg {
         to: Option<Addr>,
         ask_asset: AssetInfo,
     },
+    IncreasePosition {
+        asset: Asset,
+        collateral_amount: Uint128,
+        leverage_amount: Uint128,
+        is_long: bool,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
