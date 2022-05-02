@@ -542,6 +542,18 @@ pub fn swap(
 // 6. initialAmount is close to targetAmount, action reduces balance largely => low tax.
 // 7. initialAmount is above targetAmount, nextAmount is below targetAmount and vice versa.
 // 8. a large swap should have similar fees as the same trade split into multiple smaller swaps.
+/// 
+/// # Arguments
+/// 
+/// * `initial_aum_value` - The total value (normalized in USD) of the Basket's assets
+/// * `basket` - The Basket of assets being traded against
+/// * `initial_reserve_values` - The reserve values (normalized in USD) for each BasketAsset
+/// being traded against. This includes occupied and unoccupied assets in the pool.
+/// * `offer_or_ask_values` - The USD amount the user wants to trade for each BasketAsset
+/// * `offer_or_ask_assets` - The BasketAsset's that are being traded against
+/// * `action` - Offer|Ask used to determine if the user is buying or selling the assets, 
+/// respectively.
+/// 
 /// CHECK: types here are bad, and conversions too many, need to consolidate.
 /// CHECK: that we are doing the correct math when calculating
 /// fees that should be charged .

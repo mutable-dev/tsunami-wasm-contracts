@@ -88,7 +88,7 @@ pub struct BasketAsset {
 	/// Represents how much in reserves the pool owns of the available asset from fees
 	pub fee_reserves: Uint128,
 
-	/// Represents the unoccupied + occupied amount of assets in the pool for trading 
+	/// Represents the unoccupied amount of assets in the pool for trading 
 	/// Does not include fee_reserves
 	pub available_reserves: Uint128,
 
