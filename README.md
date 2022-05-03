@@ -1,11 +1,9 @@
 # tsunami-contracts
 
-
-
 ## Building
 ``` 
 cd contracts/basket
-cargo build
+cargo wasm
 ```
 
 ## Testing

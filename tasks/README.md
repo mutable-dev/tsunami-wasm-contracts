@@ -18,5 +18,10 @@ node ./query_lp.js
 
 ## Provide liquidity
 ```bash
-node ./provide_liquidity.js
+node ./provide_liquidity.js <denom> <amount>
+```
+
+## Swap
+```bash
+node ./swap.js <offer_denom> <offer_amount> <ask_denom>
 ```
