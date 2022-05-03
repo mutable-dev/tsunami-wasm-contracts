@@ -64,6 +64,12 @@ pub enum ContractError {
 
     #[error("Failed to query token supply")]
     FailedToQueryTokenSupply,
+
+    #[error("Price to Uint128 received invalid price (expected_expo = {expected_expo:?}, expo = {expo:?})")]
+    IncorrectDecimals {
+        expo: i32,
+        expected_expo: i32
+    },
 }
 
 impl From<OverflowError> for ContractError {
