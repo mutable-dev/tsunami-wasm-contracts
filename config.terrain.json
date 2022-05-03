@@ -17,7 +17,86 @@
           }
         },
         "instantiateMsg": {
-          "count": 0
+          "assets": [
+            {
+              "info": {
+                "native_token": {
+                  "denom": "uluna"
+                }
+              },
+              "address": "uluna",
+              "weight": "1",
+              "min_profit_basis_points": "1",
+              "max_asset_amount": "10000000000",
+              "is_asset_stable": true,
+              "is_asset_shortable": true,
+              "oracle": {
+                "Stub": {
+                  "price": 10000,
+                  "expo": -2
+                }
+              },
+              "backup_oracle": {
+                "Stub": {
+                  "price": 10000,
+                  "expo": -2
+                }
+              },
+              "ticker_data": {
+                "testnet_address": "name",
+                "mainnet_address": "name",
+                "dummy_address": "name",
+                "testnet_price_feed": "58caa3b4419af35005dd20b0ddcb6974067a473f298977fc64cf434bd3005b95",
+                "mainnet_price_feed": "58caa3b4419af35005dd20b0ddcb6974067a473f298977fc64cf434bd3005b95",
+                "dummy_price_feed": "58caa3b4419af35005dd20b0ddcb6974067a473f298977fc64cf434bd3005b95"
+              }
+            },
+            {
+              "info": {
+                "native_token": {
+                  "denom": "uusd"
+                }
+              },
+              "address": "uusd",
+              "weight": "1",
+              "min_profit_basis_points": "1",
+              "max_asset_amount": "10000000000",
+              "is_asset_stable": true,
+              "is_asset_shortable": true,
+              "oracle": {
+                "Stub": {
+                  "price": 1000000,
+                  "expo": -6
+                }
+              },
+              "backup_oracle": {
+                "Stub": {
+                  "price": 1000000,
+                  "expo": -6
+                }
+              },
+              "ticker_data": {
+                "testnet_address": "name",
+                "mainnet_address": "name",
+                "dummy_address": "name",
+                "testnet_price_feed": "58caa3b4419af35005dd20b0ddcb6974067a473f298977fc64cf434bd3005b95",
+                "mainnet_price_feed": "58caa3b4419af35005dd20b0ddcb6974067a473f298977fc64cf434bd3005b95",
+                "dummy_price_feed": "58caa3b4419af35005dd20b0ddcb6974067a473f298977fc64cf434bd3005b95"
+              }
+            }
+          ],
+          "name": "blue chip basket",
+          "tax_basis_points": "1",
+          "stable_tax_basis_points": "1",
+          "mint_burn_basis_points": "1",
+          "swap_fee_basis_points": "1",
+          "stable_swap_fee_basis_points": "1",
+          "margin_fee_basis_points": "1",
+          "liquidation_fee_usd": "1",
+          "min_profit_time": "1",
+          "total_weights": "2",
+          "admin": "name",
+          "token_code_id": 148
         }
       }
     }

@@ -157,6 +157,7 @@ pub fn withdraw_liquidity(
         )
         .expect("couldn't price ask asset value in contract"),
         USD_VALUE_PRECISION
+
     )?;
 
     // Calculate gross asset return

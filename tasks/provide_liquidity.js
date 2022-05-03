@@ -1,7 +1,7 @@
 const fetch = require('isomorphic-fetch');
 const { MsgExecuteContract, MnemonicKey, Coins, LCDClient } = require('@terra-money/terra.js');
 
-async function main() {
+async function main(denom, amount) {
     const contract = process.env.CONTRACT;
     if (!contract) {
         console.log("Please set CONTRACT environment variable to the contract address");
@@ -53,16 +53,16 @@ async function main() {
         {
             deposit_liquidity: {
                 assets: [{
-                    amount: "100000",
+                    amount,
                     info: {
                         native_token: {
-                            "denom": "uluna"
+                            denom,
                         }
                     },
                 }]
             }
         },
-        {uluna: "100000"},
+        {[denom]: amount},
     );
 
     const tx = await wallet.createAndSignTx({msgs: [msg]});
@@ -83,4 +83,10 @@ async function main() {
     console.log(lpBalanceAfter);
 }
 
-main();
+const args = process.argv.slice(2);
+if (args.length < 2) {
+    console.log("Usage: node provide_liquidity.js <denom> <amount>");
+    exit(1);
+}
+
+main(args[0], args[1]);

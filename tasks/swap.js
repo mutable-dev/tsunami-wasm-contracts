@@ -1,7 +1,19 @@
 const fetch = require('isomorphic-fetch');
 const { MsgExecuteContract, MnemonicKey, Coins, LCDClient } = require('@terra-money/terra.js');
 
-async function main() {
+async function main(offer_asset, offer_amount, ask_asset) {
+    const contract = process.env.CONTRACT;
+    if (!contract) {
+        console.log("Please set CONTRACT environment variable to the contract address");
+        exit(1);
+    }
+
+    const lpContract = process.env.LP_CONTRACT;
+    if (!lpContract) {
+        console.log("Please set LP_CONTRACT environment variable to the contract address");
+        exit(1);
+    }
+
     // Fetch gas prices and convert to `Coin` format.
     const gasPrices = await (await fetch('https://bombay-fcd.terra.dev/v1/txs/gas_prices')).json();
     const gasPricesCoins = new Coins(gasPrices);
@@ -20,41 +32,47 @@ async function main() {
 
     const wallet = lcd.wallet(mk);
     const [balanceBefore] = await lcd.bank.balance(mk.accAddress);
+    console.log("before swap, you have:");
     console.log(balanceBefore.toData());
-
-    const contract = "terra122dgdy3a6mwlru6deqynrsm3n7e0qax999q3za";
 
     const msg = new MsgExecuteContract(
         wallet.key.accAddress,
         contract,
         {
-          "swap": {
-            "ask_asset": {
-              "native_token": {
-                "denom": "uusd"
+          swap: {
+            ask_asset: {
+              native_token: {
+                denom: ask_asset
               }
             },
-            "offer_asset": {
-              "amount": "100000",
-              "info": {
-                "native_token": { 
-                  "denom": "uluna"
+            offer_asset: {
+              amount: offer_amount,
+              info: {
+                native_token: { 
+                  denom: offer_asset
                 }
               },
             },
-            "sender": wallet.key.accAddress,
+            sender: wallet.key.accAddress,
           }
         },
-        {"uluna": "100000"},
+        {[offer_asset]: offer_amount},
       );
 
-    const tx = wallet.createAndSignTx({msgs: [msg]});
-    // const result = lcd.tx.broadcast(tx);
-    // console.log(result);
+    const tx = await wallet.createAndSignTx({msgs: [msg]});
+    const result = await lcd.tx.broadcast(tx);
+    console.log(result);
 
 
-    // [balanceAfter] = await lcd.bank.balance(mk.accAddress);
-    // console.log(balanceAfter.toData());
+    const [balanceAfter] = await lcd.bank.balance(mk.accAddress);
+    console.log("after swap, you have:");
+    console.log(balanceAfter.toData());
 }
 
-main();
+const args = process.argv.slice(2);
+if (args.length < 3) {
+    console.log("Usage: node swap.js <offer_denom> <offer_amount> <ask_denom>");
+    exit(1);
+}
+
+main(args[0], args[1], args[2]);
