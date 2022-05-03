@@ -96,10 +96,8 @@ pub struct BasketAsset {
 
 impl BasketAsset {
     pub fn new(asset_info: InstantiateAssetInfo) -> Self {
-        // TODO: query CW20 for decimals
-        let _token_decimals = Uint128::from(8_u32);
 
-        // TODO: Fix these, if needed.
+        // Initialize these fields to zero
         let cumulative_funding_rate = Uint128::default();
         let last_funding_time = Uint128::default();
         let net_protocol_liabilities = Uint128::default();
@@ -258,16 +256,12 @@ impl Basket {
         Ok(Price::price_basket(amounts, USD_VALUE_PRECISION).expect("Failed to price the basket of assets under management (calculate_aum)"))
     }
 
-    /// TODO: Calculates total number of lp tokens
+    /// Calculates total number of lp tokens
     pub fn total_tokens(&self, querier: &QuerierWrapper, _info: AssetInfo) -> Result<Uint128, ContractError> {
         // TODO: implement to_addr()
         let contract_addr = Addr::unchecked("0x0000000000000000000000000000000000000000"); //info.to_addr();
 
-        if cfg!(feature = "test") {
-            Ok(Uint128::from(1_u8))
-        } else {
-            Ok(query_supply(querier, contract_addr)?)
-        }
+        query_supply(querier, contract_addr)
     }
 
     /// Calculates usd amount to withdraw. Reduce fees elsewhere
@@ -278,7 +272,7 @@ impl Basket {
         querier: &QuerierWrapper,
     ) -> Result<Uint128, ContractError> {
         // Calculate aum in USD, in units of USD_VALUE_PRECISION
-        let aum_value: Uint128 = safe_price_to_Uint128(self.calculate_aum(querier)?)?;
+        let aum_value: Uint128 = safe_price_to_Uint128(self.calculate_aum(querier)?, USD_VALUE_PRECISION)?;
 
         // Calculate value of lp_amount lp tokens in USD, in units of USD_VALUE_PRECISION
         let redeem_value: Uint128 =

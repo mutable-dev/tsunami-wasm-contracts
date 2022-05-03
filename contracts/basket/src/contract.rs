@@ -29,6 +29,7 @@ const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 // Calculate USD value of asset down to this precision
 pub const USD_VALUE_PRECISION: i32 = -6;
 pub const LP_DECIMALS: u8 = 9;
+const PD_EXPO: i32 = -9;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -155,14 +156,16 @@ pub fn withdraw_liquidity(
             USD_VALUE_PRECISION,
         )
         .expect("couldn't price ask asset value in contract"),
+        USD_VALUE_PRECISION
+
     )?;
 
     // Calculate gross asset return
     let mut redemption_value: Uint128 =
         basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
 
-    // TODO: Calculate fee_bps
-    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?)?;
+    // Calculate fee_bps
+    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?, USD_VALUE_PRECISION)?;
     let fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
         &basket,
@@ -179,7 +182,7 @@ pub fn withdraw_liquidity(
     let invert_price: Price = get_unit_price()
         .div(&ask_asset_with_price.1)
         .expect("Couldn't invert ask_asset price in withdraw_liquidity");
-    let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price)?;
+    let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price, ask_decimals + USD_VALUE_PRECISION + PD_EXPO)?;
     let redemption_asset = Asset {
         amount: redemption_amount,
         info: ask_asset.info,
@@ -207,11 +210,6 @@ pub fn withdraw_liquidity(
     Ok(Response::new()
         .add_messages(messages)
         .add_attributes(attributes))
-}
-
-/// TODO: Need to implement this
-fn validate_addr(_api: &dyn Api, sender: &str) -> Result<Addr, ContractError> {
-    Ok(Addr::unchecked(sender.to_owned()))
 }
 
 /// Produces unit price of USD, in units of `USD_VALUE_PRECISION`
@@ -341,7 +339,7 @@ pub fn receive_cw20(
             }
 
             let to_addr = if let Some(to_addr) = to {
-                Some(validate_addr(deps.api, &to_addr)?)
+                Some(addr_validate_to_lower(deps.api, &to_addr)?)
             } else {
                 None
             };
@@ -453,6 +451,7 @@ pub fn swap(
             USD_VALUE_PRECISION,
         )
         .expect("Unable to price offer asset value in contract"),
+        USD_VALUE_PRECISION
     )?;
     let ask_decimals: i32 = query_token_precision(&deps.querier, &ask_asset)?
         .try_into()
@@ -478,9 +477,10 @@ pub fn swap(
             USD_VALUE_PRECISION,
         )
         .expect("Unable to price ask asset value in contract"),
+        USD_VALUE_PRECISION
     )?;
 
-    // TODO: Compute offer value and ask fee
+    // Compute offer value and ask fee
     let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.price as u128);
     let user_offer_value = Uint128::new(
         Price::price_basket(
@@ -756,10 +756,11 @@ pub fn provide_liquidity(
                     )],
                     USD_VALUE_PRECISION,
                 ).expect("Couldn't price offer asset value in contract"),
+                USD_VALUE_PRECISION
             ).unwrap()
         })
         .collect();
-    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?)?;
+    let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?, USD_VALUE_PRECISION)?;
 
     // Value of user deposits
     let user_deposit_values: Vec<Uint128> = offer_assets_with_price
@@ -778,7 +779,9 @@ pub fn provide_liquidity(
                     )],
                     USD_VALUE_PRECISION,
                 ).expect("Couldn't price user deposit assets")
-            }).unwrap()
+                },
+                USD_VALUE_PRECISION
+            ).unwrap()
         })
         .collect();
     let total_user_deposit_value: Uint128 = user_deposit_values.iter().sum();
@@ -796,17 +799,11 @@ pub fn provide_liquidity(
     } else {
         // Handle deposit into nonempty basket
 
-        // TODO: do we need to check for slippage for any reason if we use oracles? Maybe if user doesn't want to pay max bps fee?
-        // Assert slippage tolerance
-        // assert_slippage_tolerance(slippage_tolerance, &deposits, &assets)?;
-
-        // exchange rate is (lp supply) / (aum)
-        // here we value * rate = value * lp supply / aum, safely
-        // then, we reduce fees by doing gross * ( 10000 - deposit_fee ) / 10000
+        // This is the number of tokens to mint before any fees
         let pre_fee: Uint128 =
             total_user_deposit_value.multiply_ratio(lp_supply, initial_aum_value);
 
-        // Gather bps for all fees
+        // Gather fee bps for all deposit assets
         let fee_bps: Vec<Uint128> = calculate_fee_basis_points(
             initial_aum_value,
             &basket,
@@ -815,6 +812,8 @@ pub fn provide_liquidity(
             &basket.match_basket_assets(&offer_assets.to_asset_info()),
             Action::Offer,
         );
+
+        // Calculate all fees: fee per deposit asset
         let fees: Vec<Uint128> = user_deposit_values
             .iter()
             .zip(fee_bps)
@@ -824,13 +823,14 @@ pub fn provide_liquidity(
             .collect();
 
         let post_fee = pre_fee - fees.iter().sum::<Uint128>();
-        post_fee
+        post_fee.multiply_ratio(
+            10_u128.pow(LP_DECIMALS as u32),
+            10_u128.pow(-USD_VALUE_PRECISION as u32),
+        )
     };
 
-    // TODO: I think this is where we subtract fees from share. I may be wrong.
-    // Also I think first depositor is charged no fee if we do it here because they just get minted less but they own 100% of lp token.
-    // Maybe we take difference and mint it to some fee wallet?
 
+    // Update 
     offer_assets.iter().for_each(|offer_asset| {
         match basket
             .assets
@@ -838,7 +838,7 @@ pub fn provide_liquidity(
             .find(|asset| offer_asset.info.equal(&asset.info))
         {
             Some(offer_basket_asset) => offer_basket_asset.available_reserves += offer_asset.amount,
-            None => {}
+            None => { panic!("{}", ContractError::AssetNotInBasket) }
         }
     });
 
@@ -851,7 +851,7 @@ pub fn provide_liquidity(
             deps.as_ref(),
             &basket,
             env,
-            validate_addr(deps.api, &receiver)?,
+            addr_validate_to_lower(deps.api, &receiver)?,
             tokens_to_mint,
         )
         .map_err(|_| ContractError::LpMintFailed)?,
@@ -923,10 +923,13 @@ pub fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
 
 // TODO: should pass in an enum that is either offer, ask, USD, and check the expo of the price going in
 #[allow(non_snake_case)]
-pub fn safe_price_to_Uint128(price: Price) -> Result<Uint128, ContractError> {
+pub fn safe_price_to_Uint128(price: Price, expected_expo: i32) -> Result<Uint128, ContractError> {
 
     // Check for positive price
     if price.price < 0 { return Err(ContractError::NegativePrice) }
+
+    // Check for expected expo
+    if price.expo != expected_expo { return Err(ContractError::IncorrectDecimals { expo: price.expo, expected_expo }) }
     
     Ok(Uint128::new(price.price as u128))
 }
