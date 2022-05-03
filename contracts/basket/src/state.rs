@@ -261,7 +261,7 @@ impl Basket {
         // TODO: implement to_addr()
         let contract_addr = Addr::unchecked("0x0000000000000000000000000000000000000000"); //info.to_addr();
 
-        Ok(query_supply(querier, contract_addr)?)
+        query_supply(querier, contract_addr)
     }
 
     /// Calculates usd amount to withdraw. Reduce fees elsewhere
