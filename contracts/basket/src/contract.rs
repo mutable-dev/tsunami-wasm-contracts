@@ -178,7 +178,7 @@ pub fn withdraw_liquidity(
     // milli-USDs per token
     let invert_price: Price = get_unit_price()
         .div(&ask_asset_with_price.1)
-        .expect("Couldn't invert ");
+        .expect("Couldn't invert ask_asset price in withdraw_liquidity");
     let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price)?;
     let redemption_asset = Asset {
         amount: redemption_amount,
