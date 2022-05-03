@@ -21,12 +21,15 @@ const CONTRACT_NAME: &str = "tsunami-basket";
 /// Contract version that is used for migration.
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// TODO: verify that these precisions and basis points are correct
+// We probably need to do some research on utilization curves and decide if linear makes the most sense
 const INSTANTIATE_BASKET_REPLY_ID: u64 = 1;
 const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
 const FUNDING_RATE_PRECISION: Uint128 = Uint128::new(1_000_000);
 const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 const FUNDING_RATE_INTERVAL: Uint128 = Uint128::new(8);
+const FUNDING_RATE_FACTOR: Uint128 = Uint128::new(10000);
 
 // Calculate USD value of asset down to this precision
 pub const USD_VALUE_PRECISION: i32 = -6;
@@ -152,7 +155,7 @@ pub fn increase_position(
         .ok_or(ContractError::AssetNotInBasket)?;
 
     // update funding rates on the asset
-    update_funding_rate(env, basket_asset)?;
+    update_funding_rate(&env, basket_asset)?;
     
     // get the position of the user from deps.storage
     let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
@@ -224,22 +227,62 @@ pub fn increase_position(
 
 // updates the funding rate on a basket asset by comparing the current time to the last time the funding rate was updated
 // TODO: Implement this
-fn update_funding_rate(env: Env, basket_asset: &BasketAsset) -> Result<(), ContractError> {
+fn update_funding_rate(env: &Env, basket_asset: &mut BasketAsset) -> Result<(), ContractError> {
     println!("time: {:?}", env.block.time);
     // get the current time
-    let current_time = env.block.time;
+    let current_time = Uint128::from(env.block.time.nanos());
     // get the last time the funding rate was updated
-
-    // if the current time is greater than the last time the funding rate was updated + the time interval
     let last_time = basket_asset.last_funding_time;
-    if current_time > last_time {
-        basket_asset.last_funding_time = current_time; 
+
+    // if there is no funding rate, set it
+    // not exactly sure why we need to multiply ration here but its done here
+    // https://github.com/gmx-io/gmx-contracts/commit/63c5e726bee5ce875ec02ac81584111a9fd73431
+    if last_time == Uint128::new(0) {
+        basket_asset.last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL;
+        return Ok(());
     }
-        // update the funding rate
-    // else
-        // do nothing
+
+    // If the current time is greater than the last time the funding rate was updated
+    // we don't need to update the funding rate, since not enough time has passed
+    if last_time + FUNDING_RATE_INTERVAL > current_time {
+        return Ok(());
+    }
+    
+    // in this case the current time is greater than the last time the funding rate was updated + a funding rate interval
+    // meaning that its time to update the funding rate!
+
+    // TODO: Investigate if we are adding units properly here, we probably need funding interval precision in nanos here
+    // i.e. 1_000_000 or 3_600_000_000_000(hours to nano seconds) or something
+    // Once again doing this multiplication + division from the github link above, but might not need it
+
+    let funding_rate = calculate_funding_rate(env, basket_asset)?;
+    basket_asset.cumulative_funding_rate += funding_rate;
+    basket_asset.last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL; 
     Ok(())
 }
+
+fn calculate_funding_rate(env: &Env, basket_asset: &BasketAsset) -> Result<Uint128, ContractError> {
+    let last_time = basket_asset.last_funding_time;
+    let current_time = Uint128::from(env.block.time.nanos());
+
+    // ensure we don't prematurely calculate the funding rate
+    if last_time + FUNDING_RATE_INTERVAL > current_time {
+        return Ok(Uint128::new(0));
+    }
+    // calculate the amount of funding rate intervals that have passed since the last funding rate update
+    let intervals = (current_time - last_time)/FUNDING_RATE_INTERVAL;
+    // TODO: Need to determine if the asset is stable or not, and both should have different
+    // utilization curves
+
+    // calculate the funding rate by taking the utilized reserves and dividing it 
+    // the amount of total outstanding reservs and multiply that times the intervals
+    // note this will take the current utilization rate and multiply it for past intervals...
+    // meaning we need this function to be called every hour or so, oherwise we may be charging 
+    // a funding rate inaccurately to what is being presented on the UI
+    Ok(FUNDING_RATE_FACTOR * basket_asset.occupied_reserves * intervals / (
+        basket_asset.available_reserves + basket_asset.occupied_reserves))
+}
+
 
 // TODO: Change decimal precision to go to 1000th place on USD
 fn asset_amount_to_usd(

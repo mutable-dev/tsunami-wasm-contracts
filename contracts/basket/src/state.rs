@@ -66,7 +66,7 @@ pub struct BasketAsset {
     pub cumulative_funding_rate: Uint128,
 
     /// Last time the funding rate was updated
-    pub last_funding_time: Timestamp,
+    pub last_funding_time: Uint128,
 
     /// Account with price oracle data on the asset
     pub oracle: OracleInterface,
