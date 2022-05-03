@@ -563,6 +563,7 @@ fn single_asset_deposit() {
 }
 
 #[ignore = "Multi-asset deposits are not yet implemented"]
+#[allow(unreachable_code)] // TODO: remove once todo is done!
 #[test]
 fn multi_asset_deposit() {
     todo!("Wait until multi-asset deposits are implemented");
