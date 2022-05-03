@@ -124,6 +124,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 
 // will receive 
 // context from https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L563
+// TODO: enable shorting
 pub fn increase_position(
     deps: DepsMut,
     env: Env,
@@ -222,7 +223,19 @@ pub fn increase_position(
         .checked_sub(position.collateral_amount)?;
     // increase fee_reserves by the fee
     basket_asset.fee_reserves = basket_asset.available_reserves.checked_add(position_fee)?;
-    Ok(Response::new())
+
+    let attributes = vec![
+        attr("action", "increase_position"),
+        attr("occupied_reserves", basket_asset.occupied_reserves),
+        attr("available_reserves", basket_asset.available_reserves),
+        attr("position_fee", position_fee),
+        attr("funding_rate_fee", funding_rate_fee),
+        attr("total_fees", total_fees),
+        attr("position.collateral_amount", position.collateral_amount),
+        attr("size", position.size),
+    ];
+
+    Ok(Response::new().add_attributes(attributes))
 }
 
 // updates the funding rate on a basket asset by comparing the current time to the last time the funding rate was updated
