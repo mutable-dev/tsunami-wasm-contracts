@@ -1,5 +1,6 @@
 use crate::asset::AssetInfo;
-use cosmwasm_std::{to_binary, Addr, QuerierWrapper, QueryRequest, StdResult, Uint128, WasmQuery};
+use crate::error::ContractError;
+use cosmwasm_std::{to_binary, Addr, QuerierWrapper, QueryRequest, Uint128, WasmQuery};
 
 use cw20::{Cw20QueryMsg, TokenInfoResponse};
 
@@ -11,10 +12,10 @@ const NATIVE_TOKEN_PRECISION: u8 = 6;
 /// * **querier** is an object of type [`QuerierWrapper`].
 ///
 /// * **contract_addr** is an object of type [`Addr`] which is the token contract address.
-pub fn query_supply(querier: &QuerierWrapper, contract_addr: Addr) -> StdResult<Uint128> {
+pub fn query_supply(querier: &QuerierWrapper, contract_addr: Addr) -> Result<Uint128, ContractError> {
     let res: TokenInfoResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: String::from(contract_addr),
-        msg: to_binary(&Cw20QueryMsg::TokenInfo {})?,
+        msg: to_binary(&Cw20QueryMsg::TokenInfo {}).map_err(|_| ContractError::FailedToQueryTokenSupply)?,
     }))?;
 
     Ok(res.total_supply)
@@ -25,12 +26,12 @@ pub fn query_supply(querier: &QuerierWrapper, contract_addr: Addr) -> StdResult<
 /// * **querier** is an object of type [`QuerierWrapper`].
 ///
 /// * **asset_info** is an object of type [`AssetInfo`] and contains the asset details for a specific token.
-pub fn query_token_precision(querier: &QuerierWrapper, asset_info: &AssetInfo) -> StdResult<u8> {
+pub fn query_token_precision(querier: &QuerierWrapper, asset_info: &AssetInfo) -> Result<u8, ContractError> {
     Ok(match asset_info {
         AssetInfo::NativeToken { denom: _ } => NATIVE_TOKEN_PRECISION,
         AssetInfo::Token { contract_addr } => {
             let res: TokenInfoResponse =
-                querier.query_wasm_smart(contract_addr, &Cw20QueryMsg::TokenInfo {})?;
+                querier.query_wasm_smart(contract_addr, &Cw20QueryMsg::TokenInfo {}).map_err(|_| ContractError::FailedToQueryTokenDecimals)?;
 
             res.decimals
         }

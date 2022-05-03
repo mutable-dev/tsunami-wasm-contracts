@@ -243,7 +243,7 @@ impl ::protobuf::Message for MsgInstantiateContractResponse {
     }
 }
 
-static FILE_DESCRIPTOR_PROTO_DATA: &'static [u8] = b"\
+static FILE_DESCRIPTOR_PROTO_DATA: &[u8] = b"\
     \n\x12src/response.proto\"_\n\x1eMsgInstantiateContractResponse\x12)\n\
     \x10contract_address\x18\x01\x20\x01(\tR\x0fcontractAddress\x12\x12\n\
     \x04data\x18\x02\x20\x01(\x0cR\x04dataJ\xf8\x02\n\x06\x12\x04\0\0\x08\
@@ -321,6 +321,7 @@ pub struct InstantiateLpMsg {
 /// This structure describes a CW20 hook message.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum Cw20HookMsg {
     /// Swap a given amount of asset
     Swap {

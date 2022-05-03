@@ -55,6 +55,15 @@ pub enum ContractError {
 
     #[error("The user's deposit amount exceeds the reserve limit of one or more of the assets")]
     DepositLimitExceeded,
+    
+    #[error("When pricing an asset, found a negative price")]
+    NegativePrice,
+
+    #[error("Failed to query token decimals")]
+    FailedToQueryTokenDecimals,
+
+    #[error("Failed to query token supply")]
+    FailedToQueryTokenSupply,
 }
 
 impl From<OverflowError> for ContractError {
