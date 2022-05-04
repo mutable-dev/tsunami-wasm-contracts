@@ -1223,6 +1223,121 @@ fn multiple_deposits_and_swap_and_withdraw() {
     }
 }
 
+fn instantiate_setup(sender: &str) -> OwnedDeps<MockStorage, MockApi, WasmMockQuerier> {
+    let mut deps = mock_dependencies(&[]);
+
+    deps.querier.with_token_balances(&[(
+        &String::from(FAKE_LP_TOKEN_ADDRESS),
+        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::from(0_u32))],
+    )]);
+
+    // luna and ust info
+    let luna_info = AssetInfo::NativeToken {
+        denom: "luna".to_string(),
+    };
+    let ust_info = AssetInfo::NativeToken {
+        denom: "ust".to_string(),
+    };
+
+    let mut assets = Vec::new();
+    assets.push(InstantiateAssetInfo {
+        info: luna_info.clone(),
+        address: Addr::unchecked("luna_addr"),
+        oracle: OracleInterface::from_dummy(100_000_000, -6),
+        ..create_instantiate_asset_info()
+    });
+    assets.push(InstantiateAssetInfo {
+        info: ust_info.clone(),
+        address: Addr::unchecked("ust_addr"),
+        oracle: OracleInterface::from_dummy(1_000_000, -6),
+        ..create_instantiate_asset_info()
+    });
+
+    let msg = InstantiateMsg {
+        assets: assets,
+        ..create_instantiate_msg()
+    };
+
+    let info = mock_info(sender, &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    deps
+}
+
+
+/// Check that the resulting pool reserves are the sum of the two deposits and match the contract balance
+/// Check that the second deposit has fees subtracted from the LP tokens they receive
+/// For later: check that the correct amount of fees are taken
+#[test]
+fn increase_position() {
+    use crate::state::BASKET;
+    let sender = "addr0000";
+
+    // luna info
+    let luna_info = AssetInfo::NativeToken {
+        denom: "luna".to_string(),
+    };
+
+    let mut deps = instantiate_setup(sender);
+
+    let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
+    basket.lp_token_address = Addr::unchecked(FAKE_LP_TOKEN_ADDRESS);
+    basket.assets[0].available_reserves = Uint128::new(1_000_000);
+    BASKET.save(deps.as_mut().storage, &basket).unwrap();
+
+    // Should be depositing 1 Luna as collateral and longing 10
+    let increase_position = ExecuteMsg::IncreasePosition {
+        asset: Asset {
+            info: luna_info.clone(),
+            amount: Uint128::new(1_000_000),
+        },
+        collateral_amount: Uint128::new(1_000_000),
+        leverage_amount: Uint128::new(10_000_000),
+        is_long: true
+    };
+
+    deps.querier.with_token_balances(&[(
+        &String::from("0x0000000000000000000000000000000000000000"),
+        &[(&String::from(sender), &Uint128::from(1100000000_u32))],
+    )]);
+
+    let empty_coins: [Coin; 0] = [];
+    let increaser = mock_info(sender, &coins(1_000_000, "luna"));
+    let increase_res = execute(deps.as_mut(), mock_env(), increaser, increase_position).unwrap();
+
+    // TODO: NEED TO CHECK ACTUAL ATTRIBUTES
+    let withdraw_redemption_asset = &increase_res.attributes[2].value;
+    let withdraw_fee_bps = &increase_res.attributes[3].value;
+    assert_eq!(withdraw_redemption_asset, "10000luna");
+    // TODO: This is probably not enforcing a fee properly as it is set to 0
+    // should investigate and ensure that we are calculating the correct fee in this case
+    assert_eq!(withdraw_fee_bps, "0");
+
+    match &increase_res.messages[0].msg {
+        CosmosMsg::Bank(BankMsg::Send { to_address, amount }) => {
+            assert_eq!(to_address, sender);
+            assert_eq!(amount, &[Coin::new(10_000, "luna")]);
+        }
+        _ => panic!("Expected BankMsg"),
+    }
+    match &increase_res.messages[1].msg {
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr,
+            msg,
+            funds: _,
+        }) => {
+            assert_eq!(contract_addr, FAKE_LP_TOKEN_ADDRESS);
+            assert_eq!(
+                msg.clone(),
+                to_binary(&Cw20ExecuteMsg::Burn {
+                    amount: Uint128::new(100000)
+                })
+                .unwrap()
+            );
+        }
+        _ => panic!("Expected BankMsg"),
+    }
+}
+
 /// Check that a user trying to send a deposit without transferring the appropriate funds
 #[test]
 fn try_deposit_insufficient_funds() {

@@ -146,6 +146,8 @@ pub fn increase_position(
         AssetInfo::NativeToken{denom} => { asset_key = denom.to_string(); },
     }
 
+    println!("increase position");
+
     // get the price of the asset they want to open a position on from the price oracle
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
 
@@ -158,17 +160,16 @@ pub fn increase_position(
     // update funding rates on the asset
     update_funding_rate(&env, basket_asset)?;
     
-    // get the position of the user from deps.storage
+    // get the position of the user from deps.storage, may be none
     let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
     let mut position: Position = Position::new(info.sender, &asset.info);
     match &position_option {
         Some(p) => { position = p.clone(); },
         None => {},
     }
-    // if they already have a position
-        //   recompute the average price
-    // else 
-        // take the oracle price as the average price
+
+
+    println!("see if we have pos");
     let price_u128: Uint128 = Uint128::new(aum_result.price as u128);
     let average_price: Uint128 = price_u128;
     if !position_option.is_none() {
@@ -182,14 +183,22 @@ pub fn increase_position(
         // a 10 basis points fee to open the new position
         // funding rate fee comparing the initial and current funding rates
     // get the USD value of the asset * the price of the asset and multiply by 10 basis points
-    let new_position_usd_value = asset_amount_to_usd(leverage_amount, price_u128, aum_result.expo)?;
+        // Grab relevant asset assets in basket, zipped with price
+    let asset_decimals: i32 = query_token_precision(&deps.querier, &asset.info)?
+        .try_into()
+        .expect("Unable to query for offer token decimals");
+    println!("calc new margin fee");
+    let new_position_usd_value = asset_amount_to_usd(leverage_amount, asset_decimals as u32, price_u128, aum_result.expo)?;
+    println!("here");
     let position_fee = new_position_usd_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
+    println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
     let funding_rate_fee = get_funding_fee(basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
     let total_fees = position_fee.checked_add(funding_rate_fee)?;
     // NOT NEEDED: convert the usd value to the asset the position is denominated in
     // calculate the new amount of collateral
     let new_collateral = asset.amount;
+    println!("calc new collateral");
     // check that the total collateral is more than the current fee
     assert_eq!(new_collateral
         .checked_add(position.collateral_amount)?
@@ -298,24 +307,18 @@ fn calculate_funding_rate(env: &Env, basket_asset: &BasketAsset) -> Result<Uint1
 
 
 // TODO: Change decimal precision to go to 1000th place on USD
+// TODO: WATCH OUT FOR OVERFLOW, could happen with larger negative exponent
 fn asset_amount_to_usd(
     amount: Uint128,
+    tokens_decimals: u32,
     price: Uint128,
-    exponent: i32
+    price_exponent: i32,
 ) -> Result<Uint128, ContractError> {
-    let gross_value = amount.checked_mul(price).unwrap();
-    if exponent > 1 {
-        Ok(
-            gross_value.checked_div(Uint128::new(10).pow(exponent as u32)).
-            unwrap()
-        )
-    } else {
-        Ok(
-            gross_value.checked_mul(Uint128::new(10).pow(exponent as u32)).
-            unwrap()
-        )
-    }
-
+    println!("NOT BREAKING here yet");
+    assert!(price_exponent <= 0);
+    let gross_value: Uint128 = amount.multiply_ratio(price, 10_u128.pow(tokens_decimals + price_exponent.abs() as u32)); //abs is okay because we asserted is negative
+    println!("returning");
+    Ok(gross_value)
 }
 
 fn get_funding_fee(
