@@ -160,9 +160,9 @@ pub fn withdraw_liquidity(
 
     )?;
 
-    // Calculate gross asset return
+    // Calculate gross asset return value
     let mut redemption_value: Uint128 =
-        basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
+        basket.withdraw_amount(amount, &deps.querier)?;
 
     // Calculate fee_bps
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?, USD_VALUE_PRECISION)?;

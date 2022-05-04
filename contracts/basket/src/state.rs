@@ -256,18 +256,15 @@ impl Basket {
     }
 
     /// Calculates total number of lp tokens
-    pub fn total_tokens(&self, querier: &QuerierWrapper, _info: AssetInfo) -> Result<Uint128, ContractError> {
-        // TODO: implement to_addr()
-        let contract_addr = Addr::unchecked("0x0000000000000000000000000000000000000000"); //info.to_addr();
-
+    pub fn total_tokens(&self, querier: &QuerierWrapper, contract_addr: Addr) -> Result<Uint128, ContractError> {
+        
         query_supply(querier, contract_addr)
     }
 
-    /// Calculates usd amount to withdraw. Reduce fees elsewhere
+    /// Calculates gross usd amount to withdraw. Reduce fees elsewhere
     pub fn withdraw_amount(
         &self,
         lp_amount: Uint128,
-        info: AssetInfo,
         querier: &QuerierWrapper,
     ) -> Result<Uint128, ContractError> {
         // Calculate aum in USD, in units of USD_VALUE_PRECISION
@@ -275,7 +272,7 @@ impl Basket {
 
         // Calculate value of lp_amount lp tokens in USD, in units of USD_VALUE_PRECISION
         let redeem_value: Uint128 =
-            lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, info)?);
+            lp_amount.multiply_ratio(aum_value, self.total_tokens(querier, self.lp_token_address.clone())?);
 
         Ok(redeem_value)
     }
