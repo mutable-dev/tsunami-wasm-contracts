@@ -14,9 +14,9 @@ use cosmwasm_std::coins;
 use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Coin, CosmosMsg,
-    QueryRequest, ReplyOn, StdError::GenericErr, SubMsg, Uint128, WasmMsg,
+    QueryRequest, ReplyOn, StdError::GenericErr, SubMsg, Uint128, WasmMsg, WasmQuery,
 };
-use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse, Cw20QueryMsg, TokenInfoResponse};
 use pyth_sdk_terra::PriceIdentifier;
 
 const FAKE_LP_TOKEN_ADDRESS: &str = "lp-token-address";
@@ -819,6 +819,13 @@ fn multiple_deposits_and_swap_and_withdraw() {
         Uint128::new(11_000_000)
     );
     assert_eq!(basket.assets[1].available_reserves, Uint128::new(0));
+    let balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
+        &QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: FAKE_LP_TOKEN_ADDRESS.to_string(),
+            msg: to_binary(&Cw20QueryMsg::TokenInfo {}).unwrap(),
+        })
+    ).unwrap().unwrap()).unwrap();
+    println!("balances is = {balances:?}");
 
     let swap = ExecuteMsg::Swap {
         sender: Addr::unchecked(sender),
@@ -877,8 +884,8 @@ fn multiple_deposits_and_swap_and_withdraw() {
     };
 
     deps.querier.with_token_balances(&[(
-        &String::from("0x0000000000000000000000000000000000000000"),
-        &[(&String::from(sender), &Uint128::from(1100000000_u32))],
+        &String::from(FAKE_LP_TOKEN_ADDRESS),
+        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::from(1100000000_u64))],
     )]);
 
     let empty_coins: [Coin; 0] = [];

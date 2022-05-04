@@ -6,7 +6,7 @@ use crate::{
     state::{Basket, BasketAsset, ToAssetInfo, BASKET},
 };
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, Addr, Api, Binary, CosmosMsg, Decimal, Deps,
+    attr, entry_point, from_binary, to_binary, Addr, Binary, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
     WasmMsg,
 };
@@ -160,9 +160,9 @@ pub fn withdraw_liquidity(
 
     )?;
 
-    // Calculate gross asset return
+    // Calculate gross asset return value
     let mut redemption_value: Uint128 =
-        basket.withdraw_amount(amount, ask_asset.info.clone(), &deps.querier)?;
+        basket.withdraw_amount(amount, &deps.querier)?;
 
     // Calculate fee_bps
     let initial_aum_value: Uint128 = safe_price_to_Uint128(basket.calculate_aum(&deps.querier)?, USD_VALUE_PRECISION)?;
@@ -842,8 +842,6 @@ pub fn provide_liquidity(
         }
     });
 
-    BASKET.save(deps.storage, &basket)?;
-
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
     messages.extend(
@@ -856,6 +854,8 @@ pub fn provide_liquidity(
         )
         .map_err(|_| ContractError::LpMintFailed)?,
     );
+
+    BASKET.save(deps.storage, &basket)?;
 
     // Return response with attributes
     Ok(Response::new().add_messages(messages).add_attributes(vec![
