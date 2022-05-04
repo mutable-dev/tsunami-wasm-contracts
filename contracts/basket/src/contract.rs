@@ -842,8 +842,6 @@ pub fn provide_liquidity(
         }
     });
 
-    BASKET.save(deps.storage, &basket)?;
-
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = receiver.unwrap_or_else(|| info.sender.to_string());
     messages.extend(
@@ -856,6 +854,8 @@ pub fn provide_liquidity(
         )
         .map_err(|_| ContractError::LpMintFailed)?,
     );
+
+    BASKET.save(deps.storage, &basket)?;
 
     // Return response with attributes
     Ok(Response::new().add_messages(messages).add_attributes(vec![
