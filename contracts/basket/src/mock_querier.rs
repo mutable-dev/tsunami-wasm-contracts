@@ -6,8 +6,7 @@ use cosmwasm_std::{
 use cw20::{BalanceResponse, Cw20QueryMsg, TokenInfoResponse};
 use std::collections::HashMap;
 use terra_cosmwasm::TerraQueryWrapper;
-
-pub const MOCK_LP_DECIMALS: u8 = 6;
+use crate::contract::LP_DECIMALS;
 
 /// mock_dependencies is a drop-in replacement for cosmwasm_std::testing::mock_dependencies.
 /// This uses the Astroport CustomQuerier.
@@ -97,7 +96,7 @@ impl WasmMockQuerier {
                             to_binary(&TokenInfoResponse {
                                 name: "lp".to_string(),
                                 symbol: "lp".to_string(),
-                                decimals: MOCK_LP_DECIMALS,
+                                decimals: LP_DECIMALS,
                                 total_supply: total_supply,
                             })
                             .into(),
