@@ -10,7 +10,6 @@ use cosmwasm_std::{Addr, QuerierWrapper, StdResult, Uint128};
 use cw_storage_plus::Item;
 use phf::phf_map;
 use pyth_sdk_terra::{query_price_feed, Price, PriceFeed, PriceIdentifier, PriceStatus};
-use std::cfg;
 
 /// Basket of assets
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
