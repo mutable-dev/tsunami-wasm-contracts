@@ -1,6 +1,7 @@
 node_modules
 frontend/node_modules
 **/target
+**/artifacts
 contracts/basket/.DS_Store
 contracts/.DS_Store
 .DS_Store

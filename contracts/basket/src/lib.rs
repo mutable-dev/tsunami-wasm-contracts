@@ -4,6 +4,7 @@ pub mod error;
 pub mod msg;
 pub mod querier;
 pub mod state;
+pub mod price;
 
 #[cfg(test)]
 mod testing;
