@@ -184,17 +184,20 @@ pub fn increase_position(
         // funding rate fee comparing the initial and current funding rates
     // get the USD value of the asset * the price of the asset and multiply by 10 basis points
         // Grab relevant asset assets in basket, zipped with price
+    /// TODO: Need to add shorting
+    /// TODO: Need to replace fee calculation denominated in USD and instead denominate in collateral asset
+    ///  SHOULD mimic logic in collect margin fees in gmx where its taken and given to fee reserves when opening/closing a position
     let asset_decimals: i32 = query_token_precision(&deps.querier, &asset.info)?
         .try_into()
         .expect("Unable to query for offer token decimals");
     println!("calc new margin fee");
     let new_position_usd_value = asset_amount_to_usd(leverage_amount, asset_decimals as u32, price_u128, aum_result.expo)?;
     println!("here");
-    let position_fee = new_position_usd_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
+    let position_fee_in_usd = new_position_usd_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
     println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
     let funding_rate_fee = get_funding_fee(basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
-    let total_fees = position_fee.checked_add(funding_rate_fee)?;
+    let total_fees_in_usd = position_fee_in_usd.checked_add(funding_rate_fee)?;
     // NOT NEEDED: convert the usd value to the asset the position is denominated in
     // calculate the new amount of collateral
     let new_collateral = asset.amount;
@@ -202,13 +205,13 @@ pub fn increase_position(
     // check that the total collateral is more than the current fee
     assert_eq!(new_collateral
         .checked_add(position.collateral_amount)?
-        .checked_sub(total_fees)? >= Uint128::new(0), true);
+        .checked_sub(total_fees_in_usd)? >= Uint128::new(0), true);
     // add new amount of collateral to the positions collateral
     position.collateral_amount = position.collateral_amount.checked_add(new_collateral)?;
     // add new fees on position to the fee_reserve of that asset in the basket
-    basket_asset.fee_reserves = basket_asset.fee_reserves.checked_add(total_fees)?;
+    basket_asset.fee_reserves = basket_asset.fee_reserves.checked_add(total_fees_in_usd)?;
     // subtract the new fees from the collateral
-    position.collateral_amount = position.collateral_amount.checked_sub(total_fees)?;
+    position.collateral_amount = position.collateral_amount.checked_sub(total_fees_in_usd)?;
     // update the new funding rate on the position
     position.entry_funding_rate = basket_asset.cumulative_funding_rate;
     // update the time on the position with the current time
@@ -218,28 +221,36 @@ pub fn increase_position(
     // validate new position is healthy
     position.validate_health(aum_result.price, aum_result.expo);
     // increase occupied assets by the amount of new leverage
-    basket_asset.occupied_reserves = basket_asset.occupied_reserves.checked_add(leverage_amount)?;
+    // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change
+    // in the future as we decide where to put the collateral in our internal accouting
+    println!("total fees:$10 {} new position value: $10_000 {}", total_fees_in_usd, new_position_usd_value);
+    basket_asset.occupied_reserves = basket_asset.occupied_reserves.checked_add(leverage_amount)?
+        .checked_add(position.collateral_amount)?
+        .checked_sub(total_fees_in_usd)?;
     // increase global net liabilities by the fee + position size delta
     // decrease global net liabilities by the collateral delta
     basket_asset.net_protocol_liabilities = basket_asset.net_protocol_liabilities
-        .checked_add(position_fee)?
+        .checked_add(position_fee_in_usd)?
         .checked_add(leverage_amount)?
         .checked_sub(collateral_amount)?;
-    // increase amount in the pool_reserves of the collateral token by the collateral delta
-    // decrease the pool_reserves by the amount of the newly applied margin fee
-    basket_asset.available_reserves = basket_asset.available_reserves
-        .checked_add(collateral_amount)?
-        .checked_sub(position.collateral_amount)?;
+    // TODO: Decide if the following makes sense, I feel like collateral should not go in available_reserves
+    // GMX lets people take out margin using other trader's collateral, but does not let people swap against 
+    // That collateral. I think even letting people use your collateral as their margin is a bad idea.
+        // increase amount in the pool_reserves of the collateral token by the collateral delta
+        // decrease the pool_reserves by the amount of the newly applied margin fee
+    // basket_asset.available_reserves = basket_asset.available_reserves
+    //     .checked_add(collateral_amount)?
+    //     .checked_sub(position.collateral_amount)?;
     // increase fee_reserves by the fee
-    basket_asset.fee_reserves = basket_asset.available_reserves.checked_add(position_fee)?;
+    basket_asset.fee_reserves = basket_asset.available_reserves.checked_add(position_fee_in_usd)?;
 
     let attributes = vec![
         attr("action", "increase_position"),
         attr("occupied_reserves", basket_asset.occupied_reserves),
         attr("available_reserves", basket_asset.available_reserves),
-        attr("position_fee", position_fee),
+        attr("position_fee_in_usd", position_fee_in_usd),
         attr("funding_rate_fee", funding_rate_fee),
-        attr("total_fees", total_fees),
+        attr("total_fees", total_fees_in_usd),
         attr("position.collateral_amount", position.collateral_amount),
         attr("size", position.size),
     ];

@@ -1281,7 +1281,7 @@ fn increase_position() {
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked(FAKE_LP_TOKEN_ADDRESS);
-    basket.assets[0].available_reserves = Uint128::new(1_000_000);
+    basket.assets[0].available_reserves = Uint128::new(10_000_000);
     BASKET.save(deps.as_mut().storage, &basket).unwrap();
 
     // Should be depositing 1 Luna as collateral and longing 10
@@ -1304,13 +1304,24 @@ fn increase_position() {
     let increaser = mock_info(sender, &coins(1_000_000, "luna"));
     let increase_res = execute(deps.as_mut(), mock_env(), increaser, increase_position).unwrap();
 
+    let expected_attributes = vec![
+        attr("action", "increase_position"),
+        attr("occupied_reserves", "11000000"),
+        attr("available_reserves", "0"),
+        attr("position_fee", "1000"),
+        attr("funding_rate_fee", "0"),
+        attr("total_fees", "1000"),
+        attr("position.collateral_amount", "1_000_000"),
+        attr("size", "10_000_000"),
+    ];
     // TODO: NEED TO CHECK ACTUAL ATTRIBUTES
+    for i in 0..expected_attributes.len() {
+        let actual_attribute = increase_res.attributes[i].clone();
+        let expected_attribute = expected_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute);
+    }
     let withdraw_redemption_asset = &increase_res.attributes[2].value;
     let withdraw_fee_bps = &increase_res.attributes[3].value;
-    assert_eq!(withdraw_redemption_asset, "10000luna");
-    // TODO: This is probably not enforcing a fee properly as it is set to 0
-    // should investigate and ensure that we are calculating the correct fee in this case
-    assert_eq!(withdraw_fee_bps, "0");
 
     match &increase_res.messages[0].msg {
         CosmosMsg::Bank(BankMsg::Send { to_address, amount }) => {
