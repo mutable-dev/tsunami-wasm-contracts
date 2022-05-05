@@ -12,7 +12,7 @@ use terra_cosmwasm::TerraQuerier;
 use crate::{
     error::ContractError,
     state::BasketAsset,
-    querier::query_token_precision,
+    querier::query_token_precision, price::Price,
 };
 
 /// UST token denomination
@@ -302,29 +302,6 @@ pub fn token_asset_info(contract_addr: Addr) -> AssetInfo {
     AssetInfo::Token { contract_addr }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Price {
-    pub price: pyth_sdk_terra::Price,
-}
-
-impl Price {
-    pub fn new(price: pyth_sdk_terra::Price) -> Self {
-        Price { price }
-    }
-
-    // TODO: should pass in an enum that is either offer, ask, USD, and check the expo of the price going in
-    #[allow(non_snake_case)]
-    pub fn to_Uint128(&self, expected_expo: i32) -> Result<Uint128, ContractError> {
-        // Check for positive price
-        if self.price.price < 0 { return Err(ContractError::NegativePrice) }
-
-        // Check for expected expo
-        if self.price.expo != expected_expo { return Err(ContractError::IncorrectDecimals { expo: self.price.expo, expected_expo }) }
-    
-        Ok(Uint128::new(self.price.price as u128))
-    }
-}
-
 // PricedAsset
 pub struct PricedAsset {
     pub asset: Asset,
@@ -355,14 +332,6 @@ impl PricedAsset {
                 Ok(price)
             }
         }
-    }
-
-    #[allow(non_snake_case)]
-    pub fn query_Uint128_price(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {                
-        let price = self.query_price(querier)?;
-        let decimals = self.query_decimals(querier)?;
-        let price = price.to_Uint128(decimals)?;
-        Ok(price)
     }
 
     pub fn query_contract_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {

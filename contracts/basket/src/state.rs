@@ -1,8 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::asset::{Asset, AssetInfo};
-use crate::contract::{safe_price_to_Uint128, safe_u128_to_i64, USD_VALUE_PRECISION};
+use crate::asset::{Asset, AssetInfo, safe_u128_to_i64};
+use crate::contract::USD_VALUE_PRECISION;
 use crate::error::ContractError;
 use crate::msg::{InstantiateAssetInfo, InstantiateMsg};
 use crate::querier::{query_supply, query_token_precision};
@@ -227,7 +227,7 @@ impl Basket {
 
     // CHECK: that we should take the value of the token account as AUM and not the general reserves from the
     // available asset account
-    pub fn calculate_aum(&self, querier: &QuerierWrapper) -> Result<Price, ContractError> {
+    pub fn calculate_aum(&self, querier: &QuerierWrapper) -> Result<crate::price::Price, ContractError> {
         // Build amounts: input to price_basket
         let tokens: Vec<(BasketAsset, Price)> = self
             .assets
@@ -252,7 +252,7 @@ impl Basket {
             .collect::<Vec<(Price, i64, i32)>>();
 
         // Construct aum Price result
-        Ok(Price::price_basket(amounts, USD_VALUE_PRECISION).expect("Failed to price the basket of assets under management (calculate_aum)"))
+        Ok(crate::price::Price::new(Price::price_basket(amounts, USD_VALUE_PRECISION).expect("Failed to price the basket of assets under management (calculate_aum)")))
     }
 
     /// Calculates total number of lp tokens
@@ -268,7 +268,7 @@ impl Basket {
         querier: &QuerierWrapper,
     ) -> Result<Uint128, ContractError> {
         // Calculate aum in USD, in units of USD_VALUE_PRECISION
-        let aum_value: Uint128 = safe_price_to_Uint128(self.calculate_aum(querier)?, USD_VALUE_PRECISION)?;
+        let aum_value: Uint128 = self.calculate_aum(querier)?.to_Uint128(USD_VALUE_PRECISION)?;
 
         // Calculate value of lp_amount lp tokens in USD, in units of USD_VALUE_PRECISION
         let redeem_value: Uint128 =
