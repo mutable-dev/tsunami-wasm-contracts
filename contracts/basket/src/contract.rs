@@ -185,19 +185,22 @@ pub fn increase_position(
         // funding rate fee comparing the initial and current funding rates
     // get the USD value of the asset * the price of the asset and multiply by 10 basis points
         // Grab relevant asset assets in basket, zipped with price
-    /// TODO: Need to add shorting
-    /// TODO: Need to replace fee calculation denominated in USD and instead denominate in collateral asset
+    /// TODO A: Need to add shorting
+    /// TODO B: Need to replace fee calculation denominated in USD and instead denominate in collateral asset
     ///  SHOULD mimic logic in collect margin fees in gmx where its taken and given to fee reserves when opening/closing a position
     let asset_decimals: i32 = query_token_precision(&deps.querier, &asset.info)?
         .try_into()
         .expect("Unable to query for offer token decimals");
     println!("calc new margin fee");
+    // TODO B: Should be in index asset
     let new_position_usd_value = asset_amount_to_usd(leverage_amount, asset_decimals as u32, price_u128, aum_result.price.expo)?;
     println!("here");
+    // TODO B: Should be in collateral asset?
     let position_fee_in_usd = new_position_usd_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
     println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
     let funding_rate_fee = get_funding_fee(basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
+    // TODO: B: Should be collateral asset?
     let total_fees_in_usd = position_fee_in_usd.checked_add(funding_rate_fee)?;
     // NOT NEEDED: convert the usd value to the asset the position is denominated in
     // calculate the new amount of collateral
@@ -210,14 +213,18 @@ pub fn increase_position(
     // add new amount of collateral to the positions collateral
     position.collateral_amount = position.collateral_amount.checked_add(new_collateral)?;
     // add new fees on position to the fee_reserve of that asset in the basket
+    // TODO B: Should add to fee reserves of collateral asset
     basket_asset.fee_reserves = basket_asset.fee_reserves.checked_add(total_fees_in_usd)?;
     // subtract the new fees from the collateral
+    // TODO B: Should subtract fees from collateeral asset amount
     position.collateral_amount = position.collateral_amount.checked_sub(total_fees_in_usd)?;
     // update the new funding rate on the position
     position.entry_funding_rate = basket_asset.cumulative_funding_rate;
     // update the time on the position with the current time
     position.last_increased_time = env.block.time;
     // update the size of the position with the new amount of leverage being added to the position
+    // TODO B: This should be adding the new position size to the amount of leverage a user is taking
+    //// TODO B: Denominated in the token
     position.size = position.size.checked_add(leverage_amount)?;
     // validate new position is healthy
     position.validate_health(aum_result.price.price, aum_result.price.expo);
