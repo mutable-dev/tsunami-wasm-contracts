@@ -3,7 +3,7 @@ use crate::{
     error::ContractError,
     msg::*,
     state::{Basket, BasketAsset, BASKET, POSITIONS, Position, ToAssetInfo},
-    querier::{query_supply},
+    querier::{query_supply, query_token_precision},
 };
 #[allow(unused_imports)]
 use cosmwasm_std::{
@@ -15,6 +15,7 @@ use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
 use pyth_sdk_terra::{Price, PriceFeed};
+use std::convert::TryInto;
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "tsunami-basket";
@@ -169,8 +170,8 @@ pub fn increase_position(
     }
 
 
-    println!("see if we have pos");
-    let price_u128: Uint128 = Uint128::new(aum_result.price as u128);
+    println!("see if we have pos: aum: {:?}", aum_result);
+    let price_u128: Uint128 = Uint128::new(aum_result.price.price as u128);
     let average_price: Uint128 = price_u128;
     if !position_option.is_none() {
         //get existing size and existing price + new delta size * new price / 2
@@ -191,7 +192,7 @@ pub fn increase_position(
         .try_into()
         .expect("Unable to query for offer token decimals");
     println!("calc new margin fee");
-    let new_position_usd_value = asset_amount_to_usd(leverage_amount, asset_decimals as u32, price_u128, aum_result.expo)?;
+    let new_position_usd_value = asset_amount_to_usd(leverage_amount, asset_decimals as u32, price_u128, aum_result.price.expo)?;
     println!("here");
     let position_fee_in_usd = new_position_usd_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
     println!("calc new funding rate fee");
@@ -219,7 +220,7 @@ pub fn increase_position(
     // update the size of the position with the new amount of leverage being added to the position
     position.size = position.size.checked_add(leverage_amount)?;
     // validate new position is healthy
-    position.validate_health(aum_result.price, aum_result.expo);
+    position.validate_health(aum_result.price.price, aum_result.price.expo);
     // increase occupied assets by the amount of new leverage
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change
     // in the future as we decide where to put the collateral in our internal accouting

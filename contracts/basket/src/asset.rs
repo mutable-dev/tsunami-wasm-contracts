@@ -13,7 +13,11 @@ use crate::{
     error::ContractError,
     state::BasketAsset,
     querier::query_token_precision, 
+<<<<<<< HEAD
     price::PythPrice,
+=======
+    price::Price,
+>>>>>>> cleanup code after rebase
 };
 
 /// UST token denomination
