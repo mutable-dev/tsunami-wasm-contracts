@@ -1,6 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, convert::TryInto};
 
 use cosmwasm_std::{
     to_binary, Addr, Api, BankMsg, Coin, CosmosMsg, Decimal, MessageInfo, QuerierWrapper, StdError,
@@ -9,10 +9,18 @@ use cosmwasm_std::{
 use cw20::Cw20ExecuteMsg;
 use terra_cosmwasm::TerraQuerier;
 
+use crate::{
+    error::ContractError,
+    state::BasketAsset,
+    querier::query_token_precision,
+};
+
 /// UST token denomination
 pub const UUSD_DENOM: &str = "uusd";
 /// LUNA token denomination
 pub const ULUNA_DENOM: &str = "uluna";
+
+const USD_VALUE_PRECISION: i32 = -6;
 
 /// ## Description
 /// This enum describes a Terra asset (native or CW20).
@@ -292,4 +300,115 @@ pub fn native_asset_info(denom: String) -> AssetInfo {
 /// * **contract_addr** is a [`Addr`] object representing the address of a token contract.
 pub fn token_asset_info(contract_addr: Addr) -> AssetInfo {
     AssetInfo::Token { contract_addr }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Price {
+    pub price: pyth_sdk_terra::Price,
+}
+
+impl Price {
+    pub fn new(price: pyth_sdk_terra::Price) -> Self {
+        Price { price }
+    }
+
+    // TODO: should pass in an enum that is either offer, ask, USD, and check the expo of the price going in
+    #[allow(non_snake_case)]
+    pub fn to_Uint128(&self, expected_expo: i32) -> Result<Uint128, ContractError> {
+        // Check for positive price
+        if self.price.price < 0 { return Err(ContractError::NegativePrice) }
+
+        // Check for expected expo
+        if self.price.expo != expected_expo { return Err(ContractError::IncorrectDecimals { expo: self.price.expo, expected_expo }) }
+    
+        Ok(Uint128::new(self.price.price as u128))
+    }
+}
+
+// PricedAsset
+pub struct PricedAsset {
+    pub asset: Asset,
+    pub basket_asset: BasketAsset,
+    decimals: Option<i32>,
+    price: Option<Price>,
+}
+
+impl PricedAsset {
+    pub fn new(asset: Asset, basket_asset: BasketAsset) -> Self {
+        PricedAsset { asset, basket_asset, price: None, decimals: None }
+    }
+
+    pub fn query_decimals(&mut self, querier: &QuerierWrapper) -> Result<i32, ContractError> {
+        let decimals: i32 = query_token_precision(querier, &self.asset.info)?
+            .try_into()
+            .expect("Unable to query for offer token decimals");
+        self.decimals = Some(decimals);
+        Ok(decimals)
+    }
+
+    pub fn query_price(&mut self, querier: &QuerierWrapper) -> Result<Price, ContractError> {
+        match self.price {
+            Some(price) => Ok(price),
+            None => {
+                let price = Price::new(self.basket_asset.oracle.get_price(querier)?);
+                self.price = Some(price);
+                Ok(price)
+            }
+        }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn query_Uint128_price(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {                
+        let price = self.query_price(querier)?;
+        let decimals = self.query_decimals(querier)?;
+        let price = price.to_Uint128(decimals)?;
+        Ok(price)
+    }
+
+    pub fn query_contract_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
+        let decimals = self.query_decimals(querier)?;
+        let price = self.query_price(querier)?;
+        let value = pyth_sdk_terra::Price::price_basket(
+            &[(
+                price.price,
+                safe_u128_to_i64(self.basket_asset.available_reserves.u128())?
+                    + safe_u128_to_i64(self.basket_asset.occupied_reserves.u128())?,
+                -decimals,
+            )], USD_VALUE_PRECISION
+        ).expect("Unable to price asset value in contract");
+        let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
+        Ok(value)
+    }
+
+    pub fn query_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
+        let decimals = self.query_decimals(querier)?;
+        let price = self.query_price(querier)?;
+        let value = pyth_sdk_terra::Price::price_basket(
+            &[(
+                price.price,
+                safe_u128_to_i64(self.asset.amount.u128())?,
+                -decimals,
+            )], USD_VALUE_PRECISION
+        ).expect("Unable to price asset value");
+        let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
+        Ok(value)
+    }
+}
+
+pub fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {
+    let output = input as i64;
+    if output as u128 == input {
+        Ok(output)
+    } else {
+        Err(ContractError::FailedCast)
+    }
+}
+
+pub fn safe_i64_to_u128(input: i64) -> Result<u128, ContractError> {
+    let output = input as u128;
+    if output as i64 == input {
+        Ok(output)
+    } else {
+        Err(ContractError::FailedCast)
+    }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    asset::{addr_validate_to_lower, Asset, AssetInfo},
+    asset::{addr_validate_to_lower, Asset, AssetInfo, PricedAsset},
     error::ContractError,
     msg::*,
     querier::{query_supply, query_token_precision},
@@ -14,7 +14,6 @@ use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
 use pyth_sdk_terra::Price;
-use std::convert::TryInto;
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "tsunami-basket";
@@ -426,86 +425,130 @@ pub fn swap(
         }
     }
 
-    // Grab relevant asset assets in basket, zipped with price
-    let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?
-        .try_into()
-        .expect("Unable to query for offer token decimals");
-    let offer_asset_with_price: (BasketAsset, Price, Asset) = match basket
-        .assets
-        .iter()
-        .zip(basket.get_prices(&deps.querier)?)
-        .find(|(asset, _price)| offer_asset.info.equal(&asset.info))
-    {
-        Some((asset, price)) => (asset.clone(), price, offer_asset.clone()),
+    let offer_basket_asset = match basket.assets.iter().find(|asset| {asset.info == offer_asset.info}) {
+        Some(asset) => asset.clone(),
         None => return Err(ContractError::AssetNotInBasket),
     };
-    // Determine the amount of an asset held in the contract based on our internal accounting
-    let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
-        Price::price_basket(
-            &[(
-                offer_asset_with_price.1,
-                safe_u128_to_i64(offer_asset_with_price.0.available_reserves.u128())?
-                    + safe_u128_to_i64(offer_asset_with_price.0.occupied_reserves.u128())?,
-                -offer_decimals,
-            )],
-            USD_VALUE_PRECISION,
-        )
-        .expect("Unable to price offer asset value in contract"),
-        USD_VALUE_PRECISION
-    )?;
-    let ask_decimals: i32 = query_token_precision(&deps.querier, &ask_asset)?
-        .try_into()
-        .expect("Unable to query for ask token decimals");
-    let ask_asset_with_price: (BasketAsset, Price) = match basket
-        .assets
-        .iter()
-        .zip(basket.get_prices(&deps.querier)?)
-        .find(|(asset, _price)| ask_asset.equal(&asset.info))
-    {
-        Some((asset, price)) => (asset.clone(), price),
+
+    let ask_basket_asset = match basket.assets.iter().find(|asset| {asset.info == ask_asset}) {
+        Some(asset) => asset.clone(),
         None => return Err(ContractError::AssetNotInBasket),
     };
-    // Determine the amount of an asset held in the contract based on our internal accounting
-    let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
-        Price::price_basket(
-            &[(
-                ask_asset_with_price.1,
-                safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())?
-                    + safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?,
-                -ask_decimals,
-            )],
-            USD_VALUE_PRECISION,
-        )
-        .expect("Unable to price ask asset value in contract"),
-        USD_VALUE_PRECISION
-    )?;
+
+    let mut offer_asset = PricedAsset::new(offer_asset, offer_basket_asset);
+    let mut ask_asset = PricedAsset::new(Asset{info: ask_asset, amount: Uint128::zero()}, ask_basket_asset);
+
+    // // Grab relevant asset assets in basket, zipped with price
+    // let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?
+    //     .try_into()
+    //     .expect("Unable to query for offer token decimals");
+    // let offer_asset_with_price: (BasketAsset, Price, Asset) = match basket
+    //     .assets
+    //     .iter()
+    //     .zip(basket.get_prices(&deps.querier)?)
+    //     .find(|(asset, _price)| offer_asset.info.equal(&asset.info))
+    // {
+    //     Some((asset, price)) => (asset.clone(), price, offer_asset.clone()),
+    //     None => return Err(ContractError::AssetNotInBasket),
+    // };
+    // // Determine the amount of an asset held in the contract based on our internal accounting
+    // let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
+    //     Price::price_basket(
+    //         &[(
+    //             offer_asset_with_price.1,
+    //             safe_u128_to_i64(offer_asset_with_price.0.available_reserves.u128())?
+    //                 + safe_u128_to_i64(offer_asset_with_price.0.occupied_reserves.u128())?,
+    //             -offer_decimals,
+    //         )],
+    //         USD_VALUE_PRECISION,
+    //     )
+    //     .expect("Unable to price offer asset value in contract"),
+
+    // let offer_asset = PricedAsset::new(offer_asset, offer_basket_asset);
+    
+    // let offer_asset = PricedAsset::new(asset, basket_asset)
+
+    // // Grab relevant asset assets in basket, zipped with price
+    // let offer_decimals: i32 = query_token_precision(&deps.querier, &offer_asset.info)?
+    //     .try_into()
+    //     .expect("Unable to query for offer token decimals");
+    // let offer_asset_with_price: (BasketAsset, Price, Asset) = match basket
+    //     .assets
+    //     .iter()
+    //     .zip(basket.get_prices(&deps.querier)?)
+    //     .find(|(asset, _price)| offer_asset.info.equal(&asset.info))
+    // {
+    //     Some((asset, price)) => (asset.clone(), price, offer_asset.clone()),
+    //     None => return Err(ContractError::AssetNotInBasket),
+    // };
+    // // Determine the amount of an asset held in the contract based on our internal accounting
+    // let offer_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
+    //     Price::price_basket(
+    //         &[(
+    //             offer_asset_with_price.1,
+    //             safe_u128_to_i64(offer_asset_with_price.0.available_reserves.u128())?
+    //                 + safe_u128_to_i64(offer_asset_with_price.0.occupied_reserves.u128())?,
+    //             -offer_decimals,
+    //         )],
+    //         USD_VALUE_PRECISION,
+    //     )
+    //     .expect("Unable to price offer asset value in contract"),
+    //     USD_VALUE_PRECISION
+    // )?;
+    // let ask_decimals: i32 = query_token_precision(&deps.querier, &ask_asset)?
+    //     .try_into()
+    //     .expect("Unable to query for ask token decimals");
+    // let ask_asset_with_price: (BasketAsset, Price) = match basket
+    //     .assets
+    //     .iter()
+    //     .zip(basket.get_prices(&deps.querier)?)
+    //     .find(|(asset, _price)| ask_asset.equal(&asset.info))
+    // {
+    //     Some((asset, price)) => (asset.clone(), price),
+    //     None => return Err(ContractError::AssetNotInBasket),
+    // };
+    // // Determine the amount of an asset held in the contract based on our internal accounting
+    // let ask_asset_value_in_contract: Uint128 = safe_price_to_Uint128(
+    //     Price::price_basket(
+    //         &[(
+    //             ask_asset_with_price.1,
+    //             safe_u128_to_i64(ask_asset_with_price.0.available_reserves.u128())?
+    //                 + safe_u128_to_i64(ask_asset_with_price.0.occupied_reserves.u128())?,
+    //             -ask_decimals,
+    //         )],
+    //         USD_VALUE_PRECISION,
+    //     )
+    //     .expect("Unable to price ask asset value in contract"),
+    //     USD_VALUE_PRECISION
+    // )?;
 
     // Compute offer value and ask fee
     let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.price as u128);
-    let user_offer_value = Uint128::new(
-        Price::price_basket(
-            &[(
-                offer_asset_with_price.1,
-                safe_u128_to_i64(offer_asset.amount.u128())?,
-                -offer_decimals,
-            )],
-            USD_VALUE_PRECISION,
-        ).expect("Unable to price user's offer").price as u128
-    );
+    // let user_offer_value = Uint128::new(
+    //     Price::price_basket(
+    //         &[(
+    //             offer_asset.query_price(&deps.querier)?,
+    //             safe_u128_to_i64(offer_asset.amount.u128())?,
+    //             -offer_decimals,
+    //         )],
+    //         USD_VALUE_PRECISION,
+    //     ).expect("Unable to price user's offer").price as u128
+    // );
+    let user_offer_value = offer_asset.query_value(&deps.querier)?;
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
         &basket,
-        &[offer_asset_value_in_contract],
+        &[offer_asset.query_contract_value(&deps.querier)?],
         &vec![user_offer_value],
-        &basket.match_basket_assets(&[offer_asset.info.clone()]),
+        &[offer_asset.basket_asset.clone()],
         Action::Offer,
     )[0];
     let ask_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
         &basket,
-        &[ask_asset_value_in_contract],
+        &[ask_asset.query_contract_value(&deps.querier)?],
         &vec![user_offer_value],
-        &basket.match_basket_assets(&[ask_asset.clone()]),
+        &[],
         Action::Ask,
     )[0];
 
@@ -515,14 +558,14 @@ pub fn swap(
         BASIS_POINTS_PRECISION,
     );
     // Get value of ask per unit usd, e.g. microUSD
-    let ask_per_unit_usd = ask_asset_with_price.1.price as u128;
+    let ask_per_unit_usd = ask_asset.query_Uint128_price(&deps.querier)?.u128();
     // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
     let return_asset_amount =
-        return_asset_value.multiply_ratio(10_u128.pow(ask_decimals as u32), ask_per_unit_usd);
+        return_asset_value.multiply_ratio(10_u128.pow(ask_asset.query_decimals(&deps.querier)? as u32), ask_per_unit_usd);
 
     // Construct asset type and convert to message to `to` or `sender`
     let return_asset = Asset {
-        info: ask_asset_with_price.0.info.clone(),
+        info: ask_asset.asset.info.clone(),
         amount: return_asset_amount,
     };
     let receiver = to.unwrap_or_else(|| sender.clone());
@@ -531,16 +574,16 @@ pub fn swap(
     match basket
         .assets
         .iter_mut()
-        .find(|asset| offer_asset.info.equal(&asset.info))
+        .find(|asset| offer_asset.asset.info.equal(&asset.info))
     {
-        Some(offer_basket_asset) => offer_basket_asset.available_reserves += offer_asset.amount,
+        Some(offer_basket_asset) => offer_basket_asset.available_reserves += offer_asset.asset.amount,
         None => {}
     }
 
     match basket
         .assets
         .iter_mut()
-        .find(|asset| ask_asset.equal(&asset.info))
+        .find(|asset| ask_asset.asset.info.equal(&asset.info))
     {
         Some(offer_asset) => offer_asset.available_reserves -= return_asset_amount,
         None => {}
@@ -558,9 +601,9 @@ pub fn swap(
         .add_attribute("action", "swap")
         .add_attribute("sender", sender.as_str())
         .add_attribute("receiver", receiver.as_str())
-        .add_attribute("offer_asset", offer_asset.info.to_string())
-        .add_attribute("ask_asset", ask_asset_with_price.0.info.to_string())
-        .add_attribute("offer_amount", offer_asset.amount.to_string())
+        .add_attribute("offer_asset", offer_asset.asset.info.to_string())
+        .add_attribute("ask_asset", ask_asset.asset.info.to_string())
+        .add_attribute("offer_amount", offer_asset.asset.amount.to_string())
         .add_attribute("return_asset_amount", return_asset_amount.to_string())
         .add_attribute("offer_bps", offer_fee_bps.to_string())
         .add_attribute("ask_bps", ask_fee_bps.to_string()))
