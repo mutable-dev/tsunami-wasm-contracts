@@ -1,5 +1,5 @@
 use crate::{
-    asset::{addr_validate_to_lower, Asset, AssetInfo, PricedAsset},
+    asset::{addr_validate_to_lower, Asset, AssetInfo, PricedAsset, safe_i64_to_u128},
     error::ContractError,
     msg::*,
     state::{Basket, BasketAsset, BASKET, POSITIONS, Position, ToAssetInfo},
@@ -98,7 +98,15 @@ pub fn execute(
             to,
             ask_asset,
         ),
-        ExecuteMsg::IncreasePosition { asset, collateral_amount, leverage_amount, is_long } => increase_position(deps, env, info, asset, collateral_amount, leverage_amount, is_long),
+        ExecuteMsg::IncreasePosition { position_asset, collateral_asset, leverage_amount, is_long } => increase_position(
+            deps,
+            env,
+            info,
+            position_asset,
+            collateral_asset,
+            leverage_amount,
+            is_long
+        ),
     }
 }
 
@@ -130,19 +138,25 @@ pub fn increase_position(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    asset: Asset,
-    collateral_amount: Uint128,
-    leverage_amount: Uint128,
+    position_asset: Asset,
+    collateral_asset: Asset,
+    position_amount: Uint128,
     is_long: bool,
 ) -> Result<Response, ContractError> {
     // Ensure native token was sent
-    asset.assert_sent_native_token_balance(&info)?;
+    collateral_asset.assert_sent_native_token_balance(&info)?;
     // validate that the position is healthy and can be increased
     // load the basket
     let mut basket: Basket = BASKET.load(deps.storage)?;
+    let position_basket_asset = basket.assets.iter_mut().find(|asset| asset.info == position_asset.info)
+        .ok_or_else(|| ContractError::AssetNotInBasket)?;
+
+    let collateral_basket_asset = basket.assets.iter().find(|asset| asset.info == collateral_asset.info)
+        .ok_or_else(|| ContractError::AssetNotInBasket)?;
+
     // get the composite key of the user + asset id + direction
     let asset_key: String;
-    match &asset.info {
+    match &position_asset.info {
         AssetInfo::Token{contract_addr} => { asset_key = contract_addr.to_string(); },
         AssetInfo::NativeToken{denom} => { asset_key = denom.to_string(); },
     }
@@ -152,18 +166,24 @@ pub fn increase_position(
     // get the price of the asset they want to open a position on from the price oracle
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
 
+    // need to get the price of position asset and the price of the collateral asset
+    let priced_position_asset = PricedAsset::new(position_asset, position_basket_asset.clone());
+    let priced_collateral_asset = PricedAsset::new(collateral_asset, collateral_basket_asset.clone());
+    
+    // price_feeds.iter().find(|price_feed| price_feed.id == asset_key)?.price;
     let aum_result = basket.calculate_aum(&deps.querier)?;
 
     // iterate through the assets in the basket and get the asset whose key matches the asset key
-    let mut basket_asset: &mut BasketAsset = basket.assets.iter_mut().find(|basket_asset| basket_asset.info == asset.info)
+    let mut collateral_basket_asset: &mut BasketAsset = basket.assets.iter_mut()
+        .find(|basket_asset| basket_asset.info == collateral_asset.info)
         .ok_or(ContractError::AssetNotInBasket)?;
 
     // update funding rates on the asset
-    update_funding_rate(&env, basket_asset)?;
+    update_funding_rate(&env, position_basket_asset)?;
     
     // get the position of the user from deps.storage, may be none
     let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
-    let mut position: Position = Position::new(info.sender, &asset.info);
+    let mut position: Position = Position::new(info.sender, &position_basket_asset.info);
     match &position_option {
         Some(p) => { position = p.clone(); },
         None => {},
@@ -171,12 +191,17 @@ pub fn increase_position(
 
 
     println!("see if we have pos: aum: {:?}", aum_result);
-    let price_u128: Uint128 = Uint128::new(aum_result.price.price as u128);
-    let average_price: Uint128 = price_u128;
+    // let price_u128: Uint128 = Uint128::new(aum_result.price.price as u128);
+    let average_price: Uint128 = Uint128::new(
+        safe_i64_to_u128(
+            priced_position_asset.query_price(&deps.querier)?
+            .price.price
+        )?
+    );
     if !position_option.is_none() {
         //get existing size and existing price + new delta size * new price / 2
         let existing_size: Uint128 = position.size;
-        let size_delta = leverage_amount;
+        let size_delta = position_amount;
         position.average_price = ((existing_size * position.average_price) + (size_delta * average_price)) / Uint128::new(2);
     }
 
@@ -188,23 +213,24 @@ pub fn increase_position(
     /// TODO A: Need to add shorting
     /// TODO B: Need to replace fee calculation denominated in USD and instead denominate in collateral asset
     ///  SHOULD mimic logic in collect margin fees in gmx where its taken and given to fee reserves when opening/closing a position
-    let asset_decimals: i32 = query_token_precision(&deps.querier, &asset.info)?
+    let asset_decimals: i32 = query_token_precision(&deps.querier, &position_asset_info)?
         .try_into()
         .expect("Unable to query for offer token decimals");
     println!("calc new margin fee");
-    // TODO B: Should be in index asset
-    let new_position_usd_value = asset_amount_to_usd(leverage_amount, asset_decimals as u32, price_u128, aum_result.price.expo)?;
+    // TODO B: Should be in index asset: position_amount
+    let new_position_usd_value = asset_amount_to_usd(position_amount, asset_decimals as u32, price_u128, aum_result.price.expo)?;
     println!("here");
     // TODO B: Should be in collateral asset?
     let position_fee_in_usd = new_position_usd_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
+    let position_fee_in_collateral_asset = position_fee_in_usd.multiply_ratio(Uint128::new(1), BASIS_POINTS_PRECISION);
     println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
-    let funding_rate_fee = get_funding_fee(basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
+    let funding_rate_fee = get_funding_fee(position_basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
     // TODO: B: Should be collateral asset?
     let total_fees_in_usd = position_fee_in_usd.checked_add(funding_rate_fee)?;
     // NOT NEEDED: convert the usd value to the asset the position is denominated in
     // calculate the new amount of collateral
-    let new_collateral = asset.amount;
+    let new_collateral = collateral_asset.amount;
     println!("calc new collateral");
     // check that the total collateral is more than the current fee
     assert_eq!(new_collateral
@@ -214,30 +240,30 @@ pub fn increase_position(
     position.collateral_amount = position.collateral_amount.checked_add(new_collateral)?;
     // add new fees on position to the fee_reserve of that asset in the basket
     // TODO B: Should add to fee reserves of collateral asset
-    basket_asset.fee_reserves = basket_asset.fee_reserves.checked_add(total_fees_in_usd)?;
+    position_basket_asset.fee_reserves = position_basket_asset.fee_reserves.checked_add(total_fees_in_usd)?;
     // subtract the new fees from the collateral
     // TODO B: Should subtract fees from collateeral asset amount
     position.collateral_amount = position.collateral_amount.checked_sub(total_fees_in_usd)?;
     // update the new funding rate on the position
-    position.entry_funding_rate = basket_asset.cumulative_funding_rate;
+    position.entry_funding_rate = position_basket_asset.cumulative_funding_rate;
     // update the time on the position with the current time
     position.last_increased_time = env.block.time;
-    // update the size of the position with the new amount of leverage being added to the position
-    // TODO B: This should be adding the new position size to the amount of leverage a user is taking
+    // update the size of the position with the new amount of position being added to the position
+    // TODO B: This should be adding the new position size to the amount of position a user is taking
     //// TODO B: Denominated in the token
-    position.size = position.size.checked_add(leverage_amount)?;
+    position.size = position.size.checked_add(position_amount)?;
     // validate new position is healthy
     position.validate_health(aum_result.price.price, aum_result.price.expo);
-    // increase occupied assets by the amount of new leverage
+    // increase occupied assets by the amount of new position
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change
     // in the future as we decide where to put the collateral in our internal accouting
     println!("total fees:$10 {} new position value: $10_000 {}", total_fees_in_usd, new_position_usd_value);
-    basket_asset.occupied_reserves = basket_asset.occupied_reserves.checked_add(leverage_amount)?
+    position_basket_asset.occupied_reserves = position_basket_asset.occupied_reserves.checked_add(position_amount)?
         .checked_add(position.collateral_amount)?
         .checked_sub(total_fees_in_usd)?;
     // increase global net liabilities by the fee + position size delta
     // decrease global net liabilities by the collateral delta
-    basket_asset.net_protocol_liabilities = basket_asset.net_protocol_liabilities
+    collateral_basket_asset.net_protocol_liabilities = collateral_basket_asset.net_protocol_liabilities
         .checked_add(position_fee_in_usd)?
         .checked_add(leverage_amount)?
         .checked_sub(collateral_amount)?;

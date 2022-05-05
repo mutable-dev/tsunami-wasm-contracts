@@ -65,6 +65,9 @@ pub enum ContractError {
     #[error("Failed to query token supply")]
     FailedToQueryTokenSupply,
 
+    #[error("Price not found for asset")]
+    PriceNotFound,
+
     #[error("Price to Uint128 received invalid price (expected_expo = {expected_expo:?}, expo = {expo:?})")]
     IncorrectDecimals {
         expo: i32,
