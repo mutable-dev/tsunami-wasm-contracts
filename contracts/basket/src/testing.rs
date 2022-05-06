@@ -1312,11 +1312,11 @@ fn increase_position() {
         attr("occupied_reserves", "10000000"),
         attr("available_reserves", "0"),
         attr("position_fee_in_collateral_asset", "10000"),
-        attr("position_fee", "1000"),
-        attr("funding_rate_fee", "0"),
-        attr("total_fees", "1000"),
-        attr("position.collateral_amount", "1_000_000"),
-        attr("size", "10_000_000"),
+        attr("position_fee_value", "1000000"),
+        attr("funding_rate_fee_value", "0"),
+        attr("total_fees_value", "1000000"),
+        attr("position.collateral_amount", "1000000"),
+        attr("size", "10000000"),
     ];
     // TODO: NEED TO CHECK ACTUAL ATTRIBUTES
     for i in 0..expected_attributes.len() {
@@ -1326,31 +1326,6 @@ fn increase_position() {
     }
     let withdraw_redemption_asset = &increase_res.attributes[2].value;
     let withdraw_fee_bps = &increase_res.attributes[3].value;
-
-    match &increase_res.messages[0].msg {
-        CosmosMsg::Bank(BankMsg::Send { to_address, amount }) => {
-            assert_eq!(to_address, sender);
-            assert_eq!(amount, &[Coin::new(10_000, "luna")]);
-        }
-        _ => panic!("Expected BankMsg"),
-    }
-    match &increase_res.messages[1].msg {
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr,
-            msg,
-            funds: _,
-        }) => {
-            assert_eq!(contract_addr, FAKE_LP_TOKEN_ADDRESS);
-            assert_eq!(
-                msg.clone(),
-                to_binary(&Cw20ExecuteMsg::Burn {
-                    amount: Uint128::new(100000)
-                })
-                .unwrap()
-            );
-        }
-        _ => panic!("Expected BankMsg"),
-    }
 }
 
 /// Check that a user trying to send a deposit without transferring the appropriate funds

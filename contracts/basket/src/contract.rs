@@ -223,9 +223,14 @@ pub fn increase_position(
     // TODO B: Should be in collateral asset?
     let position_fee_value = new_position_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
     println!("position_fee_value {}", position_fee_value);
+    println!("priced_collateral_asset.query_usd_value(&deps.querier)? {}", 
+        priced_collateral_asset.query_usd_value(&deps.querier)?);
     let position_fee_in_collateral_asset = position_fee_value
         // .multiply_ratio(Uint128::new(1), Uint128::new(safe_i64_to_u128(USD_VALUE_PRECISION as i64)?))
-        .multiply_ratio(Uint128::new(1), Uint128::new(safe_i64_to_u128(priced_collateral_asset.query_price(&deps.querier)?.price.price)?));
+        .multiply_ratio(
+            Uint128::new(1),
+            priced_collateral_asset.query_usd_value(&deps.querier)?
+        );
     println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
     let funding_rate_fee_in_position_asset = get_funding_fee(position_basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
@@ -314,7 +319,7 @@ pub fn increase_position(
         attr("position_fee_in_collateral_asset", position_fee_in_collateral_asset),
         attr("position_fee_value", position_fee_value),
         attr("funding_rate_fee_value", funding_rate_fee_value),
-        attr("total_fees", total_fees_value),
+        attr("total_fees_value", total_fees_value),
         attr("position.collateral_amount", position.collateral_amount),
         attr("size", position.size),
     ];
