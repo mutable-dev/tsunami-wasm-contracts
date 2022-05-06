@@ -5,6 +5,7 @@ use crate::{
     querier::query_supply,
     state::{Basket, BasketAsset, ToAssetInfo, BASKET},
 };
+#[allow(unused_imports)]
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, CosmosMsg, Decimal, Deps,
     DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
