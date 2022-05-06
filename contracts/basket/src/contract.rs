@@ -147,11 +147,13 @@ pub fn increase_position(
     collateral_asset.assert_sent_native_token_balance(&info)?;
     // validate that the position is healthy and can be increased
     // load the basket
-    let mut basket: Basket = BASKET.load(deps.storage)?;
-    let position_basket_asset = basket.assets.iter_mut().find(|asset| asset.info == position_asset.info)
+    let mut mutable_basket: Basket = BASKET.load(deps.storage)?;
+    let basket: Basket = BASKET.load(deps.storage)?;
+
+    let position_basket_asset = basket.assets.iter().find(|asset| asset.info == position_asset.info)
         .ok_or_else(|| ContractError::AssetNotInBasket)?;
 
-    let collateral_basket_asset = basket.assets.iter_mut().find(|asset| asset.info == collateral_asset.info)
+    let collateral_basket_asset = basket.assets.iter().find(|asset| asset.info == collateral_asset.info)
         .ok_or_else(|| ContractError::AssetNotInBasket)?;
 
     // get the composite key of the user + asset id + direction
@@ -167,23 +169,18 @@ pub fn increase_position(
     let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
 
     // need to get the price of position asset and the price of the collateral asset
-    let priced_position_asset = PricedAsset::new(position_asset, position_basket_asset.clone());
-    let priced_collateral_asset = PricedAsset::new(collateral_asset, collateral_basket_asset.clone());
+    let mut priced_position_asset = PricedAsset::new(position_asset.clone(), position_basket_asset.clone());
+    let mut priced_collateral_asset = PricedAsset::new(collateral_asset.clone(), collateral_basket_asset.clone());
     
     // price_feeds.iter().find(|price_feed| price_feed.id == asset_key)?.price;
     let aum_result = basket.calculate_aum(&deps.querier)?;
 
-    // iterate through the assets in the basket and get the asset whose key matches the asset key
-    let mut collateral_basket_asset: &mut BasketAsset = basket.assets.iter_mut()
-        .find(|basket_asset| basket_asset.info == collateral_asset.info)
-        .ok_or(ContractError::AssetNotInBasket)?;
-
     // update funding rates on the asset
-    update_funding_rate(&env, position_basket_asset)?;
+    let new_position_funding_rate_result = calculate_funding_rate(&env, position_basket_asset.clone());
     
     // get the position of the user from deps.storage, may be none
     let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
-    let mut position: Position = Position::new(info.sender, &position_basket_asset.info);
+    let mut position: Position = Position::new(info.sender.clone(), &position_basket_asset.info);
     match &position_option {
         Some(p) => { position = p.clone(); },
         None => {},
@@ -244,11 +241,13 @@ pub fn increase_position(
     assert_eq!(new_collateral
         .checked_add(position.collateral_amount)?
         .checked_sub(total_fees_in_collateral_asset)? >= Uint128::new(0), true);
-    // add new amount of collateral to the positions collateral
-    position.collateral_amount = position.collateral_amount.checked_add(new_collateral)?;
+
     // add new fees on position to the fee_reserve of that asset in the basket
     // TODO B: Should add to fee reserves of collateral asset
-    collateral_basket_asset.fee_reserves = collateral_basket_asset.fee_reserves.checked_add(total_fees_in_collateral_asset)?;
+    let new_collateral_asset_fee_reserves = collateral_basket_asset.fee_reserves.checked_add(total_fees_in_collateral_asset)?;
+
+    // add new amount of collateral to the positions collateral
+    position.collateral_amount = position.collateral_amount.checked_add(new_collateral)?;
     // subtract the new fees from the collateral
     // TODO B: Should subtract fees from collateral asset amount
     position.collateral_amount = position.collateral_amount.checked_sub(total_fees_in_collateral_asset)?;
@@ -266,12 +265,12 @@ pub fn increase_position(
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change
     // in the future as we decide where to put the collateral in our internal accouting
     println!("total fees:$10 {} new position value: $10_000 {}", total_fees_value, new_position_value);
-    position_basket_asset.occupied_reserves = position_basket_asset.occupied_reserves.checked_add(position_amount)?
+    let new_position_asset_occupied_reserve = position_basket_asset.occupied_reserves.checked_add(position_amount)?
         .checked_add(position.collateral_amount)?
         .checked_sub(total_fees_value)?;
     // increase global net liabilities by the fee + position size delta
     // decrease global net liabilities by the collateral delta
-    collateral_basket_asset.net_protocol_liabilities = collateral_basket_asset.net_protocol_liabilities
+    let new_collateral_asset_liabilities = collateral_basket_asset.net_protocol_liabilities
         .checked_add(position_fee_value)?
         .checked_add(new_position_value)?
         .checked_sub(new_collateral)?;
@@ -286,6 +285,22 @@ pub fn increase_position(
     // increase fee_reserves by the fee
     // basket_asset.fee_reserves = basket_asset.available_reserves.checked_add(position_fee_in_usd)?;
 
+    mutable_basket.assets.iter_mut().for_each(|asset| {
+        if asset.info == position_asset.info {
+            asset.occupied_reserves = new_position_asset_occupied_reserve;
+            match &new_position_funding_rate_result {
+                Some(new_position_funding_rate_result) => {
+                    asset.cumulative_funding_rate = new_position_funding_rate_result.funding_rate;
+                    asset.last_funding_time = new_position_funding_rate_result.last_funding_time;
+                }
+                None => (),
+            }
+        } else if asset.info == collateral_asset.info {
+            asset.fee_reserves = new_collateral_asset_fee_reserves;
+            asset.net_protocol_liabilities = new_collateral_asset_liabilities;
+        }
+    });
+
     let attributes = vec![
         attr("action", "increase_position"),
         attr("occupied_reserves", position_basket_asset.occupied_reserves),
@@ -297,12 +312,20 @@ pub fn increase_position(
         attr("size", position.size),
     ];
 
+    BASKET.save(deps.storage, &basket)?;
+    POSITIONS.save(deps.storage, (info.sender.clone().as_bytes(), position_asset.clone().info.as_bytes(), is_long.to_string()), &position)?;
     Ok(Response::new().add_attributes(attributes))
+}
+
+
+struct FundingRateResult {
+    funding_rate: Uint128,
+    last_funding_time: Uint128
 }
 
 // updates the funding rate on a basket asset by comparing the current time to the last time the funding rate was updated
 // TODO: Implement this
-fn update_funding_rate(env: &Env, basket_asset: &mut BasketAsset) -> Result<(), ContractError> {
+fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Option<FundingRateResult> {
     println!("time: {:?}", env.block.time);
     // get the current time
     let current_time = Uint128::from(env.block.time.nanos());
@@ -313,14 +336,16 @@ fn update_funding_rate(env: &Env, basket_asset: &mut BasketAsset) -> Result<(), 
     // not exactly sure why we need to multiply ration here but its done here
     // https://github.com/gmx-io/gmx-contracts/commit/63c5e726bee5ce875ec02ac81584111a9fd73431
     if last_time == Uint128::new(0) {
-        basket_asset.last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL;
-        return Ok(());
+        return Some(FundingRateResult {
+            funding_rate: basket_asset.cumulative_funding_rate,
+            last_funding_time: current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL
+        })
     }
 
     // If the current time is greater than the last time the funding rate was updated
     // we don't need to update the funding rate, since not enough time has passed
     if last_time + FUNDING_RATE_INTERVAL > current_time {
-        return Ok(());
+        return None;
     }
     
     // in this case the current time is greater than the last time the funding rate was updated + a funding rate interval
@@ -330,19 +355,23 @@ fn update_funding_rate(env: &Env, basket_asset: &mut BasketAsset) -> Result<(), 
     // i.e. 1_000_000 or 3_600_000_000_000(hours to nano seconds) or something
     // Once again doing this multiplication + division from the github link above, but might not need it
 
-    let funding_rate = calculate_funding_rate(env, basket_asset)?;
-    basket_asset.cumulative_funding_rate += funding_rate;
-    basket_asset.last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL; 
-    Ok(())
+    let funding_rate = _calculate_funding_rate(env, basket_asset);
+    let last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL; 
+    Some(
+        FundingRateResult {
+            funding_rate,
+            last_funding_time
+        }
+    )
 }
 
-fn calculate_funding_rate(env: &Env, basket_asset: &BasketAsset) -> Result<Uint128, ContractError> {
+fn _calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Uint128 {
     let last_time = basket_asset.last_funding_time;
     let current_time = Uint128::from(env.block.time.nanos());
 
     // ensure we don't prematurely calculate the funding rate
     if last_time + FUNDING_RATE_INTERVAL > current_time {
-        return Ok(Uint128::new(0));
+        return Uint128::new(0);
     }
     // calculate the amount of funding rate intervals that have passed since the last funding rate update
     let intervals = (current_time - last_time)/FUNDING_RATE_INTERVAL;
@@ -354,8 +383,8 @@ fn calculate_funding_rate(env: &Env, basket_asset: &BasketAsset) -> Result<Uint1
     // note this will take the current utilization rate and multiply it for past intervals...
     // meaning we need this function to be called every hour or so, oherwise we may be charging 
     // a funding rate inaccurately to what is being presented on the UI
-    Ok(FUNDING_RATE_FACTOR * basket_asset.occupied_reserves * intervals / (
-        basket_asset.available_reserves + basket_asset.occupied_reserves))
+    FUNDING_RATE_FACTOR * basket_asset.occupied_reserves * intervals / (
+        basket_asset.available_reserves + basket_asset.occupied_reserves)
 }
 
 
