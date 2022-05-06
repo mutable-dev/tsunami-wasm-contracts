@@ -51,7 +51,7 @@ pub enum ExecuteMsg {
         ask_asset: AssetInfo,
     },
     IncreasePosition {
-        position_asset: AssetInfo,
+        position_asset: Asset,
         collateral_asset: Asset,
         leverage_amount: Uint128,
         is_long: bool,

@@ -1286,11 +1286,14 @@ fn increase_position() {
 
     // Should be depositing 1 Luna as collateral and longing 10
     let increase_position = ExecuteMsg::IncreasePosition {
-        asset: Asset {
+        position_asset: Asset {
             info: luna_info.clone(),
             amount: Uint128::new(1_000_000),
         },
-        collateral_amount: Uint128::new(1_000_000),
+        collateral_asset: Asset {
+            info: luna_info.clone(),
+            amount: Uint128::new(1_000_000),
+        },
         leverage_amount: Uint128::new(10_000_000),
         is_long: true
     };
