@@ -206,7 +206,6 @@ fn exploration() {
 
 fn create_basket() -> Basket {
     let basket_asset = create_basket_asset();
-    let _basket_asset2 = create_basket_asset();
     let basket_asset_copy = create_basket_asset();
     Basket::new(
         vec![basket_asset, basket_asset_copy.clone()],
@@ -399,7 +398,7 @@ fn lightly_harms_basket_remove() {
         &vec![basket_asset],
         Action::Ask,
     );
-    assert_eq!(vec![Uint128::new(16)], fees);
+    assert_eq!(vec![Uint128::new(15)], fees);
 }
 
 #[test]
@@ -416,7 +415,7 @@ fn neutral_basket_remove() {
         &vec![basket_asset],
         Action::Ask,
     );
-    assert_eq!(vec![Uint128::new(15)], fees);
+    assert_eq!(vec![Uint128::new(14)], fees);
 }
 
 #[test]
