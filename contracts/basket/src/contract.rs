@@ -163,11 +163,6 @@ pub fn increase_position(
         AssetInfo::NativeToken{denom} => { asset_key = denom.to_string(); },
     }
 
-    println!("increase position");
-
-    // get the price of the asset they want to open a position on from the price oracle
-    let price_feeds: Vec<PriceFeed> = basket.get_price_feeds(&deps.querier)?;
-
     // need to get the price of position asset and the price of the collateral asset
     let mut priced_position_asset = PricedAsset::new(position_asset.clone(), position_basket_asset.clone());
     let mut priced_collateral_asset = PricedAsset::new(collateral_asset.clone(), collateral_basket_asset.clone());
@@ -216,12 +211,21 @@ pub fn increase_position(
     println!("calc new margin fee");
     // TODO B: Should be in index asset: position_amount
     // TODO MAYBE: Might be using the wrong price here, might have incorrect precision
-    let new_position_value = priced_position_asset.query_value(&deps.querier)?
-        .checked_mul(position_amount)?;
-    println!("here");
+    println!("position_amount: {:?}", position_amount);
+    println!("priced_position_asset.query_value(&deps.querier)?: {:?}", priced_position_asset.query_value(&deps.querier)?);
+    let new_position_value = position_amount
+        .multiply_ratio(
+            priced_position_asset.query_value(&deps.querier)?,
+            Uint128::new(10_u128.pow(USD_VALUE_PRECISION.abs() as u32))
+        );
+
+    println!("new_position_value {}", new_position_value);
     // TODO B: Should be in collateral asset?
     let position_fee_value = new_position_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
-    let position_fee_in_collateral_asset = position_fee_value.multiply_ratio(Uint128::new(1), BASIS_POINTS_PRECISION);
+    println!("position_fee_value {}", position_fee_value);
+    let position_fee_in_collateral_asset = position_fee_value
+        // .multiply_ratio(Uint128::new(1), Uint128::new(safe_i64_to_u128(USD_VALUE_PRECISION as i64)?))
+        .multiply_ratio(Uint128::new(1), Uint128::new(safe_i64_to_u128(priced_collateral_asset.query_price(&deps.querier)?.price.price)?));
     println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
     let funding_rate_fee_in_position_asset = get_funding_fee(position_basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
@@ -261,13 +265,14 @@ pub fn increase_position(
     position.size = position.size.checked_add(position_amount)?;
     // validate new position is healthy
     position.validate_health(aum_result.price.price, aum_result.price.expo);
+
     // increase occupied assets by the amount of new position
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change
     // in the future as we decide where to put the collateral in our internal accouting
     println!("total fees:$10 {} new position value: $10_000 {}", total_fees_value, new_position_value);
-    let new_position_asset_occupied_reserve = position_basket_asset.occupied_reserves.checked_add(position_amount)?
-        .checked_add(position.collateral_amount)?
-        .checked_sub(total_fees_value)?;
+    let new_position_asset_occupied_reserves = position_basket_asset.occupied_reserves.checked_add(position_amount)?;
+    let new_position_asset_available_reserves = position_basket_asset.available_reserves.checked_sub(position_amount)?;
+
     // increase global net liabilities by the fee + position size delta
     // decrease global net liabilities by the collateral delta
     let new_collateral_asset_liabilities = collateral_basket_asset.net_protocol_liabilities
@@ -287,7 +292,8 @@ pub fn increase_position(
 
     mutable_basket.assets.iter_mut().for_each(|asset| {
         if asset.info == position_asset.info {
-            asset.occupied_reserves = new_position_asset_occupied_reserve;
+            asset.occupied_reserves = new_position_asset_occupied_reserves;
+            asset.available_reserves = new_position_asset_available_reserves;
             match &new_position_funding_rate_result {
                 Some(new_position_funding_rate_result) => {
                     asset.cumulative_funding_rate = new_position_funding_rate_result.funding_rate;
@@ -303,8 +309,9 @@ pub fn increase_position(
 
     let attributes = vec![
         attr("action", "increase_position"),
-        attr("occupied_reserves", position_basket_asset.occupied_reserves),
-        attr("available_reserves", position_basket_asset.available_reserves),
+        attr("occupied_reserves", new_position_asset_occupied_reserves),
+        attr("available_reserves", new_position_asset_available_reserves),
+        attr("position_fee_in_collateral_asset", position_fee_in_collateral_asset),
         attr("position_fee_value", position_fee_value),
         attr("funding_rate_fee_value", funding_rate_fee_value),
         attr("total_fees", total_fees_value),
@@ -312,7 +319,7 @@ pub fn increase_position(
         attr("size", position.size),
     ];
 
-    BASKET.save(deps.storage, &basket)?;
+    BASKET.save(deps.storage, &mutable_basket)?;
     POSITIONS.save(deps.storage, (info.sender.clone().as_bytes(), position_asset.clone().info.as_bytes(), is_long.to_string()), &position)?;
     Ok(Response::new().add_attributes(attributes))
 }

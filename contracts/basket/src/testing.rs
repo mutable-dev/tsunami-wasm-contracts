@@ -1309,8 +1309,9 @@ fn increase_position() {
 
     let expected_attributes = vec![
         attr("action", "increase_position"),
-        attr("occupied_reserves", "11000000"),
+        attr("occupied_reserves", "10000000"),
         attr("available_reserves", "0"),
+        attr("position_fee_in_collateral_asset", "10000"),
         attr("position_fee", "1000"),
         attr("funding_rate_fee", "0"),
         attr("total_fees", "1000"),
