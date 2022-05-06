@@ -379,20 +379,6 @@ impl PricedAsset {
         };
         Ok(value)
     }
-
-    pub fn query_usd_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
-        let decimals = self.query_decimals(querier)?;
-        let price = self.query_price(querier)?;
-        let value = pyth_sdk_terra::Price::price_basket(
-            &[(
-                price.price,
-                safe_u128_to_i64(self.asset.amount.u128())?,
-                -decimals,
-            )], 0
-        ).expect("Unable to price asset value");
-        let value = Price::new(value).to_Uint128(0)?;
-        Ok(value)
-    }
 }
 
 pub fn safe_u128_to_i64(input: u128) -> Result<i64, ContractError> {

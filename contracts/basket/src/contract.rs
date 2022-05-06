@@ -205,6 +205,9 @@ pub fn increase_position(
     let position_asset_decimals: i32 = query_token_precision(&deps.querier, &position_basket_asset.info)?
         .try_into()
         .expect("Unable to query for position token decimals");
+    let collateral_asset_decimals: i32 = query_token_precision(&deps.querier, &collateral_basket_asset.info)?
+        .try_into()
+        .expect("Unable to query for position token decimals");
     println!("calc new margin fee");
     // TODO MAYBE: Might be using the wrong price here, might have incorrect precision
        // Perhaps we should be using USD precision as the denominator, rather than decimals
@@ -222,11 +225,10 @@ pub fn increase_position(
     println!("new_position_value {}", new_position_value);
     let position_fee_value = new_position_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
     println!("position_fee_value {}", position_fee_value);
-    println!("priced_collateral_asset.query_usd_value(&deps.querier)? {}", priced_collateral_asset.query_usd_value(&deps.querier)?);
     let position_fee_in_collateral_asset = position_fee_value
         .multiply_ratio(
-            Uint128::new(1),
-            priced_collateral_asset.query_usd_value(&deps.querier)?
+            Uint128::new(10_u128.pow(collateral_asset_decimals.abs() as u32)),
+            priced_collateral_asset.query_value(&deps.querier)?,
         );
     
     // recompute the accumulative funding rate for the position asset
