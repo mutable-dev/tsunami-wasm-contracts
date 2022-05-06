@@ -567,6 +567,7 @@ pub fn calculate_fee_basis_points(
         // First depositor should not be hit with a fee
         if new_aum_value.is_zero() || initial_reserve_value.is_zero() {
             fee_bps.push(Uint128::zero());
+            break
         }
 
         // Calculate the initial and new distance from the target value
@@ -578,6 +579,8 @@ pub fn calculate_fee_basis_points(
         let improvement = 
             BASIS_POINTS_PRECISION.multiply_ratio(new_distance, new_target_lp_usd_value) <= 
             BASIS_POINTS_PRECISION.multiply_ratio(initial_distance, initial_target_lp_usd_value);
+
+        println!("{}, {}, {}", initial_distance, new_distance, improvement);
         if improvement {
             fee_bps.push(BASE_FEE_IN_BASIS_POINTS.multiply_ratio(
                 initial_target_lp_usd_value - initial_distance.min(new_target_lp_usd_value),
