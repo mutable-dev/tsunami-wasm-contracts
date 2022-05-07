@@ -356,18 +356,11 @@ impl PricedAsset {
         println!("price: {:?}", price);
         println!("decimals: {:?}", decimals);
         println!("casted to {}", safe_u128_to_i64(self.asset.amount.u128())?);
-        // let value = pyth_sdk_terra::Price::price_basket(
-        //     &[(
-        //         price.price,
-        //         safe_u128_to_i64(self.asset.amount.u128())?,
-        //         -decimals,
-        //     )], USD_VALUE_PRECISION
-        // ).expect("Unable to price asset value");
         let value = if price.price.expo < 0 {
             Uint128::from(price.price.price as u128)
             .multiply_ratio(
                 self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32),
-                10_u128.pow((price.price.expo.abs() + decimals) as u32)
+                10_u128.pow(price.price.expo.unsigned_abs() + decimals.unsigned_abs())
             )
         } else {
             Uint128::from(price.price.price as u128)
