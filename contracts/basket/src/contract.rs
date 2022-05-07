@@ -580,14 +580,13 @@ pub fn calculate_fee_basis_points(
             Uint256::from_uint128(new_distance) * Uint256::from_uint128(initial_target_lp_usd_value) <=
             Uint256::from_uint128(initial_distance) * Uint256::from_uint128(new_target_lp_usd_value);
 
-        println!("{}, {}, {}", initial_distance, new_distance, improvement);
         if improvement {
             fee_bps.push(BASE_FEE_IN_BASIS_POINTS.multiply_ratio(
                 initial_target_lp_usd_value - initial_distance.min(new_target_lp_usd_value),
                 initial_target_lp_usd_value,
             ));
         } else {
-            fee_bps.push(PENALTY_IN_BASIS_POINTS + BASE_FEE_IN_BASIS_POINTS.multiply_ratio(
+            fee_bps.push(BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(
                 new_distance.min(new_target_lp_usd_value),
                 new_target_lp_usd_value,
             ));
