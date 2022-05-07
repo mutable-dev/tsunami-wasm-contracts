@@ -652,7 +652,6 @@ pub fn provide_liquidity(
         }
     }
 
-    println!("offer_assets: {:?}", offer_assets);
     // Grab relevant asset assets in basket, zipped with price
     let mut offer_priced_assets: Vec<PricedAsset> = {
         let mut v: Vec<PricedAsset> = vec![];
@@ -670,11 +669,10 @@ pub fn provide_liquidity(
                     None => return Err(ContractError::AssetNotInBasket),
                 },
             )
-            // println!("offer_priced_assets: {:?}", offer_priced_assets);
         }
         v
     };
-    println!("offer_priced_assets {:?}", offer_priced_assets);
+
     // Price of one token --> Value of assets
     let offer_asset_values_in_contract = match offer_priced_assets
         .iter_mut()
@@ -691,7 +689,6 @@ pub fn provide_liquidity(
     let user_deposit_values: Vec<Uint128> = match offer_priced_assets
         .iter_mut()
         .map(|asset| {
-            println!("asset.query_value(&deps.querier) {}", asset.query_value(&deps.querier)?);
             asset.query_value(&deps.querier)
         })
         .collect::<Result<Vec<_>, ContractError>>() {
@@ -699,16 +696,13 @@ pub fn provide_liquidity(
             Err(e) => return Err(e),
         };
     let total_user_deposit_value: Uint128 = user_deposit_values.iter().sum();
-    println!("total_user_deposit_value: {}", total_user_deposit_value);
-    println!("initial_aum_value: {}", initial_aum_value);
+
     // Retrieve LP token supply
     let lp_supply: Uint128 = query_supply(&deps.querier, basket.lp_token_address.clone())?;
 
     // Calculate share -  What exactly is share?
     let tokens_to_mint: Uint128 = if lp_supply.is_zero() {
         // Handle deposit into empty basket at 1:1 USD_VALUE_PRECISION mint. First deposit gets zero fees
-        println!("10_u128.pow(LP_DECIMALS as u32): {}", 10_u128.pow(LP_DECIMALS as u32));
-        println!("10_u128.pow(-USD_VALUE_PRECISION as u32): {}", 10_u128.pow(-USD_VALUE_PRECISION as u32));
         total_user_deposit_value.multiply_ratio(
             10_u128.pow(LP_DECIMALS as u32),
             10_u128.pow(-USD_VALUE_PRECISION as u32),
