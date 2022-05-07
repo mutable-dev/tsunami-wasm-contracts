@@ -338,16 +338,22 @@ impl PricedAsset {
 
     pub fn query_contract_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
-        let price = self.query_price(querier)?;
-        let value = pyth_sdk_terra::Price::price_basket(
-            &[(
-                price.pyth_price,
-                safe_u128_to_i64(self.basket_asset.available_reserves.u128())?
-                    + safe_u128_to_i64(self.basket_asset.occupied_reserves.u128())?,
-                -decimals,
-            )], USD_VALUE_PRECISION
-        ).expect("Unable to price asset value in contract");
-        let value = PythPrice::new(value).to_Uint128(USD_VALUE_PRECISION)?;
+        let price: PythPrice = self.query_price(querier)?;
+        let value = if price.pyth_price.expo < 0 {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                (self.basket_asset.available_reserves.u128()
+                + self.basket_asset.occupied_reserves.u128()) * 10_u128.pow(-USD_VALUE_PRECISION as u32),
+                10_u128.pow(price.pyth_price.expo.unsigned_abs() + decimals.unsigned_abs())
+            )
+        } else {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                (self.basket_asset.available_reserves.u128()
+                + self.basket_asset.occupied_reserves.u128()) * 10_u128.pow(-USD_VALUE_PRECISION as u32 + price.pyth_price.expo.unsigned_abs()),
+                10_u128.pow(decimals as u32)
+            )
+        };
         Ok(value)
     }
 
