@@ -12,7 +12,8 @@ use terra_cosmwasm::TerraQuerier;
 use crate::{
     error::ContractError,
     state::BasketAsset,
-    querier::query_token_precision, price::Price,
+    querier::query_token_precision, 
+    price::PythPrice,
 };
 
 /// UST token denomination
@@ -303,11 +304,12 @@ pub fn token_asset_info(contract_addr: Addr) -> AssetInfo {
 }
 
 // PricedAsset
+#[derive(Debug)]
 pub struct PricedAsset {
     pub asset: Asset,
     pub basket_asset: BasketAsset,
     decimals: Option<i32>,
-    price: Option<Price>,
+    price: Option<PythPrice>,
 }
 
 impl PricedAsset {
@@ -323,11 +325,11 @@ impl PricedAsset {
         Ok(decimals)
     }
 
-    pub fn query_price(&mut self, querier: &QuerierWrapper) -> Result<Price, ContractError> {
+    pub fn query_price(&mut self, querier: &QuerierWrapper) -> Result<PythPrice, ContractError> {
         match self.price {
             Some(price) => Ok(price),
             None => {
-                let price = Price::new(self.basket_asset.oracle.get_price(querier)?);
+                let price = PythPrice::new(self.basket_asset.oracle.get_price(querier)?);
                 self.price = Some(price);
                 Ok(price)
             }
@@ -336,30 +338,41 @@ impl PricedAsset {
 
     pub fn query_contract_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
-        let price = self.query_price(querier)?;
-        let value = pyth_sdk_terra::Price::price_basket(
-            &[(
-                price.price,
-                safe_u128_to_i64(self.basket_asset.available_reserves.u128())?
-                    + safe_u128_to_i64(self.basket_asset.occupied_reserves.u128())?,
-                -decimals,
-            )], USD_VALUE_PRECISION
-        ).expect("Unable to price asset value in contract");
-        let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
+        let price: PythPrice = self.query_price(querier)?;
+        let value = if price.pyth_price.expo < 0 {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                (self.basket_asset.available_reserves.u128()
+                + self.basket_asset.occupied_reserves.u128()) * 10_u128.pow(-USD_VALUE_PRECISION as u32),
+                10_u128.pow(price.pyth_price.expo.unsigned_abs() + decimals.unsigned_abs())
+            )
+        } else {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                (self.basket_asset.available_reserves.u128()
+                + self.basket_asset.occupied_reserves.u128()) * 10_u128.pow(-USD_VALUE_PRECISION as u32 + price.pyth_price.expo.unsigned_abs()),
+                10_u128.pow(decimals as u32)
+            )
+        };
         Ok(value)
     }
 
     pub fn query_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
-        let price = self.query_price(querier)?;
-        let value = pyth_sdk_terra::Price::price_basket(
-            &[(
-                price.price,
-                safe_u128_to_i64(self.asset.amount.u128())?,
-                -decimals,
-            )], USD_VALUE_PRECISION
-        ).expect("Unable to price asset value");
-        let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
+        let price: PythPrice = self.query_price(querier)?;
+        let value = if price.pyth_price.expo < 0 {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32),
+                10_u128.pow(price.pyth_price.expo.unsigned_abs() + decimals.unsigned_abs())
+            )
+        } else {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32 + price.pyth_price.expo.unsigned_abs()),
+                10_u128.pow(decimals as u32)
+            )
+        };
         Ok(value)
     }
 }
