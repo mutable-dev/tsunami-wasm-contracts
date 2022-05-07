@@ -754,7 +754,7 @@ fn two_precise_deposits() {
 
     let deposit_res2 =
         execute(deps.as_mut(), mock_env(), depositor2.clone(), deposit_msg2).unwrap();
-    let expected_lp_tokens2 = "123456789";
+    let expected_lp_tokens2 = "123456789000";
     let expected_attributes = vec![
         attr("action", "provide_liquidity"),
         attr("sender", depositor2.sender.clone().as_str()),
@@ -782,9 +782,12 @@ fn two_precise_deposits() {
     let basket: Basket = query_basket(deps.as_ref()).unwrap();
     assert_eq!(
         basket.assets[0].available_reserves,
-        Uint128::new(10_000_000)
+        Uint128::new(987_654_321)
     );
-    assert_eq!(basket.assets[1].available_reserves, Uint128::new(1_000_000_000));
+    assert_eq!(
+        basket.assets[1].available_reserves,
+        Uint128::new(123_456_789)
+    );
     let balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
         &QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: FAKE_LP_TOKEN_ADDRESS.to_string(),

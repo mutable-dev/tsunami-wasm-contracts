@@ -352,18 +352,32 @@ impl PricedAsset {
 
     pub fn query_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
-        let price = self.query_price(querier)?;
+        let price: Price = self.query_price(querier)?;
         println!("price: {:?}", price);
         println!("decimals: {:?}", decimals);
-        let value = pyth_sdk_terra::Price::price_basket(
-            &[(
-                price.price,
-                safe_u128_to_i64(self.asset.amount.u128())?,
-                -decimals,
-            )], USD_VALUE_PRECISION
-        ).expect("Unable to price asset value");
+        println!("casted to {}", safe_u128_to_i64(self.asset.amount.u128())?);
+        // let value = pyth_sdk_terra::Price::price_basket(
+        //     &[(
+        //         price.price,
+        //         safe_u128_to_i64(self.asset.amount.u128())?,
+        //         -decimals,
+        //     )], USD_VALUE_PRECISION
+        // ).expect("Unable to price asset value");
+        let value = if price.price.expo < 0 {
+            Uint128::from(price.price.price as u128)
+            .multiply_ratio(
+                self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32),
+                10_u128.pow((price.price.expo.abs() + decimals) as u32)
+            )
+        } else {
+            Uint128::from(price.price.price as u128)
+            .multiply_ratio(
+                self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32 + price.price.expo.abs() as u32),
+                10_u128.pow(decimals as u32)
+            )
+        };
         println!("value in query price {:?}", value);
-        let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
+        //let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
         Ok(value)
     }
 }
