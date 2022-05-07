@@ -246,7 +246,6 @@ fn exploration() {
 
 fn create_basket() -> Basket {
     let basket_asset = create_basket_asset();
-    let _basket_asset2 = create_basket_asset();
     let basket_asset_copy = create_basket_asset();
     Basket::new(
         vec![basket_asset, basket_asset_copy.clone()],
@@ -426,6 +425,39 @@ fn strongly_harms_basket_remove() {
 }
 
 #[test]
+fn initial_deposit() {
+    let basket_asset0 = create_basket_asset();
+    let basket = create_basket();
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(0),
+        &basket,
+        &vec![Uint128::new(0)],
+        &vec![Uint128::new(1_000)],
+        &vec![basket_asset0],
+        Action::Offer,
+    );
+    assert_eq!(vec![Uint128::new(0)], fees);
+}
+
+#[test]
+fn improve_basket_add1() {
+    let basket_asset0 = create_basket_asset();
+    let basket_asset1 = create_basket_asset();
+    let basket = create_basket();
+
+    let fees = calculate_fee_basis_points(
+        Uint128::new(1_000),
+        &basket,
+        &vec![Uint128::new(100), Uint128::new(900)],
+        &vec![Uint128::new(9_900), Uint128::new(19_100)],
+        &vec![basket_asset0, basket_asset1],
+        Action::Offer,
+    );
+    assert_eq!(vec![Uint128::new(3), Uint128::new(3)], fees);
+}
+
+#[test]
 fn lightly_harms_basket_remove() {
     let mut basket_asset = create_basket_asset();
     let basket = create_basket();
@@ -439,7 +471,7 @@ fn lightly_harms_basket_remove() {
         &vec![basket_asset],
         Action::Ask,
     );
-    assert_eq!(vec![Uint128::new(16)], fees);
+    assert_eq!(vec![Uint128::new(15)], fees);
 }
 
 #[test]
@@ -456,7 +488,7 @@ fn neutral_basket_remove() {
         &vec![basket_asset],
         Action::Ask,
     );
-    assert_eq!(vec![Uint128::new(15)], fees);
+    assert_eq!(vec![Uint128::new(14)], fees);
 }
 
 #[test]

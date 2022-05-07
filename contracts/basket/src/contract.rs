@@ -8,7 +8,7 @@ use crate::{
 #[allow(unused_imports)]
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, CosmosMsg, Decimal, Deps,
-    DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
+    DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, Uint256,
     WasmMsg,
 };
 use cw2::set_contract_version;
@@ -534,7 +534,10 @@ pub fn calculate_fee_basis_points(
     action: Action,
 ) -> Vec<Uint128> {
     // Compute new aum_value
-    let new_aum_value: Uint128 = initial_aum_value + offer_or_ask_values.iter().sum::<Uint128>();
+    let new_aum_value: Uint128 = match action {
+        Action::Offer => initial_aum_value + offer_or_ask_values.iter().sum::<Uint128>(),
+        Action::Ask => initial_aum_value - offer_or_ask_values.iter().sum::<Uint128>(),
+    };
 
     // Compute updated reserve value by adding or subtracting diff_usd_value based on action
     let next_reserve_usd_values: Vec<Uint128> = match action {
@@ -565,6 +568,7 @@ pub fn calculate_fee_basis_points(
         // First depositor should not be hit with a fee
         if new_aum_value.is_zero() || initial_reserve_value.is_zero() {
             fee_bps.push(Uint128::zero());
+            break
         }
 
         // Calculate the initial and new distance from the target value
@@ -572,7 +576,10 @@ pub fn calculate_fee_basis_points(
             - initial_target_lp_usd_value.min(initial_reserve_value);
         let new_distance: Uint128 = new_target_lp_usd_value.max(next_reserve_usd_value)
             - new_target_lp_usd_value.min(next_reserve_usd_value);
-        let improvement = new_distance <= initial_distance;
+        
+        let improvement = 
+            Uint256::from_uint128(new_distance) * Uint256::from_uint128(initial_target_lp_usd_value) <=
+            Uint256::from_uint128(initial_distance) * Uint256::from_uint128(new_target_lp_usd_value);
 
         if improvement {
             fee_bps.push(BASE_FEE_IN_BASIS_POINTS.multiply_ratio(
@@ -580,13 +587,10 @@ pub fn calculate_fee_basis_points(
                 initial_target_lp_usd_value,
             ));
         } else {
-            fee_bps.push(
-                BASE_FEE_IN_BASIS_POINTS
-                    + PENALTY_IN_BASIS_POINTS.multiply_ratio(
-                        new_distance.min(new_target_lp_usd_value),
-                        new_target_lp_usd_value,
-                    ),
-            );
+            fee_bps.push(BASE_FEE_IN_BASIS_POINTS + PENALTY_IN_BASIS_POINTS.multiply_ratio(
+                new_distance.min(new_target_lp_usd_value),
+                new_target_lp_usd_value,
+            ));
         }
     }
     fee_bps
