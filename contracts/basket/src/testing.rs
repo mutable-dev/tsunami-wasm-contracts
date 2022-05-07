@@ -685,6 +685,114 @@ fn multi_asset_deposit() {
     assert_eq!(true, depositor_balance_lp_token.amount > Uint128::new(0)); // TODO figure what the exact amount should be and check it
 }
 
+/// Make an initial deposit of a highly precise amount of luna
+/// Make a second deposit of a highly precise amount of ust
+/// Make sure that the fees charged and check the lp tokens are correctly distributed
+#[test]
+fn two_precise_deposits() {
+    use crate::state::BASKET;
+    let sender = "addr0000";
+    let mut deps = instantiate_setup(sender);
+
+    deps.querier.with_token_balances(&[(
+        &String::from(FAKE_LP_TOKEN_ADDRESS),
+        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::from(0_u32))],
+    )]);
+
+    // luna and ust info
+    let luna_info = AssetInfo::NativeToken {
+        denom: "luna".to_string(),
+    };
+    let ust_info = AssetInfo::NativeToken {
+        denom: "ust".to_string(),
+    };
+
+    let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
+    basket.lp_token_address = Addr::unchecked(FAKE_LP_TOKEN_ADDRESS);
+    BASKET.save(deps.as_mut().storage, &basket).unwrap();
+
+    let luna_amount1 = 987_654_321;
+    let ust_amount2 = 123_456_789;
+    let depositor1 = mock_info("first_depositor", &coins(luna_amount1, "luna"));
+    let depositor2 = mock_info("second_depositor", &coins(ust_amount2, "ust"));
+    let deposit_asset1 = Asset {
+        info: luna_info.clone(),
+        amount: Uint128::new(luna_amount1),
+    };
+    let deposit_asset2 = Asset {
+        info: ust_info.clone(),
+        amount: Uint128::new(ust_amount2),
+    };
+
+    let deposit_msg1 = ExecuteMsg::DepositLiquidity {
+        assets: vec![deposit_asset1.clone()],
+        slippage_tolerance: None,
+        receiver: None,
+    };
+    let deposit_res1 =
+        execute(deps.as_mut(), mock_env(), depositor1.clone(), deposit_msg1).unwrap();
+
+    let expected_lp_tokens1 = "98765432100000";
+    let expected_attributes = vec![
+        attr("action", "provide_liquidity"),
+        attr("sender", depositor1.sender.clone().as_str()),
+        attr("receiver", depositor1.sender.clone().as_str()),
+        attr("offer_asset", format!("{:?}", &[deposit_asset1])),
+        attr("tokens_to_mint", expected_lp_tokens1),
+    ];
+    for i in 0..expected_attributes.len() {
+        let actual_attribute = deposit_res1.attributes[i].clone();
+        let expected_attribute = expected_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute);
+    }
+
+    let deposit_msg2 = ExecuteMsg::DepositLiquidity {
+        assets: vec![deposit_asset2.clone()],
+        slippage_tolerance: None,
+        receiver: None,
+    };
+
+    let deposit_res2 =
+        execute(deps.as_mut(), mock_env(), depositor2.clone(), deposit_msg2).unwrap();
+    let expected_lp_tokens2 = "123456789";
+    let expected_attributes = vec![
+        attr("action", "provide_liquidity"),
+        attr("sender", depositor2.sender.clone().as_str()),
+        attr("receiver", depositor2.sender.clone().as_str()),
+        attr("offer_asset", format!("{:?}", &[deposit_asset2.clone()])),
+        attr("tokens_to_mint", expected_lp_tokens2),
+    ];
+    for i in 0..expected_attributes.len() {
+        let actual_attribute = deposit_res2.attributes[i].clone();
+        let expected_attribute = expected_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute);
+    }
+
+    match &deposit_res2.messages[0].msg {
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr,
+            msg: _,
+            funds: _,
+        }) => {
+            assert_eq!(contract_addr, FAKE_LP_TOKEN_ADDRESS);
+        }
+        _ => panic!("Expected BankMsg"),
+    }
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(
+        basket.assets[0].available_reserves,
+        Uint128::new(10_000_000)
+    );
+    assert_eq!(basket.assets[1].available_reserves, Uint128::new(1_000_000_000));
+    let balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
+        &QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: FAKE_LP_TOKEN_ADDRESS.to_string(),
+            msg: to_binary(&Cw20QueryMsg::TokenInfo {}).unwrap(),
+        })
+    ).unwrap().unwrap()).unwrap();
+}
+
 /// Make an initial deposit and then a subsequent deposit of equal amounts
 /// Check that the resulting pool reserves are the sum of the two deposits and match the contract balance
 /// Check that the second deposit has fees subtracted from the LP tokens they receive

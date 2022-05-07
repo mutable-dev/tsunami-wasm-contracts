@@ -303,6 +303,7 @@ pub fn token_asset_info(contract_addr: Addr) -> AssetInfo {
 }
 
 // PricedAsset
+#[derive(Debug)]
 pub struct PricedAsset {
     pub asset: Asset,
     pub basket_asset: BasketAsset,
@@ -352,6 +353,8 @@ impl PricedAsset {
     pub fn query_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
         let price = self.query_price(querier)?;
+        println!("price: {:?}", price);
+        println!("decimals: {:?}", decimals);
         let value = pyth_sdk_terra::Price::price_basket(
             &[(
                 price.price,
@@ -359,6 +362,7 @@ impl PricedAsset {
                 -decimals,
             )], USD_VALUE_PRECISION
         ).expect("Unable to price asset value");
+        println!("value in query price {:?}", value);
         let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
         Ok(value)
     }
