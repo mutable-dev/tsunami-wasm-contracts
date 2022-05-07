@@ -7,7 +7,7 @@ use crate::{
 };
 use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, Addr, Binary, CosmosMsg, Decimal, Deps,
-    DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128,
+    DepsMut, Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, Uint256,
     WasmMsg,
 };
 use cw2::set_contract_version;
@@ -577,8 +577,8 @@ pub fn calculate_fee_basis_points(
             - new_target_lp_usd_value.min(next_reserve_usd_value);
         
         let improvement = 
-            BASIS_POINTS_PRECISION.multiply_ratio(new_distance, new_target_lp_usd_value) <= 
-            BASIS_POINTS_PRECISION.multiply_ratio(initial_distance, initial_target_lp_usd_value);
+            Uint256::from_uint128(new_distance) * Uint256::from_uint128(initial_target_lp_usd_value) <=
+            Uint256::from_uint128(initial_distance) * Uint256::from_uint128(new_target_lp_usd_value);
 
         println!("{}, {}, {}", initial_distance, new_distance, improvement);
         if improvement {
