@@ -2,6 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::asset::{Asset, AssetInfo, safe_u128_to_i64};
+use crate::price::PythPrice;
 use crate::contract::USD_VALUE_PRECISION;
 use crate::error::ContractError;
 use crate::msg::{InstantiateAssetInfo, InstantiateMsg};
@@ -227,7 +228,7 @@ impl Basket {
 
     // CHECK: that we should take the value of the token account as AUM and not the general reserves from the
     // available asset account
-    pub fn calculate_aum(&self, querier: &QuerierWrapper) -> Result<crate::price::Price, ContractError> {
+    pub fn calculate_aum(&self, querier: &QuerierWrapper) -> Result<PythPrice, ContractError> {
         // Build amounts: input to price_basket
         let tokens: Vec<(BasketAsset, Price)> = self
             .assets
@@ -252,7 +253,7 @@ impl Basket {
             .collect::<Vec<(Price, i64, i32)>>();
 
         // Construct aum Price result
-        Ok(crate::price::Price::new(Price::price_basket(amounts, USD_VALUE_PRECISION).expect("Failed to price the basket of assets under management (calculate_aum)")))
+        Ok(PythPrice::new(Price::price_basket(amounts, USD_VALUE_PRECISION).expect("Failed to price the basket of assets under management (calculate_aum)")))
     }
 
     /// Calculates total number of lp tokens

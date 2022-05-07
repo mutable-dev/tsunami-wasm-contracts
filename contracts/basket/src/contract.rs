@@ -161,7 +161,7 @@ pub fn withdraw_liquidity(
         redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
     // milli-USDs per token
     let invert_price: Price = get_unit_price()
-        .div(&ask_asset.query_price(&deps.querier)?.price)
+        .div(&ask_asset.query_price(&deps.querier)?.pyth_price)
         .expect("Couldn't invert ask_asset price in withdraw_liquidity");
     let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price, ask_asset.query_decimals(&deps.querier)? + USD_VALUE_PRECISION + PD_EXPO)?;
     let redemption_asset = Asset {
@@ -420,7 +420,7 @@ pub fn swap(
     let mut offer_asset = PricedAsset::new(offer_asset, offer_basket_asset);
     let mut ask_asset = PricedAsset::new(Asset{info: ask_asset, amount: Uint128::zero()}, ask_basket_asset);
 
-    let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.price.price as u128);
+    let initial_aum_value = Uint128::new(basket.calculate_aum(&deps.querier)?.pyth_price.price as u128);
     let user_offer_value = offer_asset.query_value(&deps.querier)?;
     let offer_fee_bps: Uint128 = calculate_fee_basis_points(
         initial_aum_value,
@@ -445,7 +445,7 @@ pub fn swap(
         BASIS_POINTS_PRECISION,
     );
     // Get value of ask per unit usd, e.g. microUSD
-    let ask_per_unit_usd = ask_asset.query_price(&deps.querier)?.price.price as u128;
+    let ask_per_unit_usd = ask_asset.query_price(&deps.querier)?.pyth_price.price as u128;
     // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
     let return_asset_amount =
         return_asset_value.multiply_ratio(10_u128.pow(ask_asset.query_decimals(&deps.querier)? as u32), ask_per_unit_usd);
