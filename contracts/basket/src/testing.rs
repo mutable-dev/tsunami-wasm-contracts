@@ -2,7 +2,7 @@ use crate::contract::{
     calculate_fee_basis_points, execute, instantiate, query_basket, Action, LP_DECIMALS,
 };
 use crate::error::ContractError;
-use crate::mock_querier::mock_dependencies;
+use crate::mock_querier::{mock_dependencies, WasmMockQuerier};
 use crate::state::OracleInterface;
 use crate::{
     asset::{Asset, AssetInfo},
@@ -11,15 +11,55 @@ use crate::{
 };
 
 use cosmwasm_std::coins;
-use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR};
+use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR, MockStorage, MockApi};
 use cosmwasm_std::{
-    attr, from_binary, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Coin, CosmosMsg,
+    OwnedDeps, attr, from_binary, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Coin, CosmosMsg,
     QueryRequest, ReplyOn, StdError::GenericErr, SubMsg, Uint128, WasmMsg, WasmQuery,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse, Cw20QueryMsg, TokenInfoResponse};
 use pyth_sdk_terra::PriceIdentifier;
 
 const FAKE_LP_TOKEN_ADDRESS: &str = "lp-token-address";
+
+fn instantiate_setup(sender: &str) -> OwnedDeps<MockStorage, MockApi, WasmMockQuerier> {
+    let mut deps = mock_dependencies(&[]);
+
+    deps.querier.with_token_balances(&[(
+        &String::from(FAKE_LP_TOKEN_ADDRESS),
+        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::from(0_u32))],
+    )]);
+
+    // luna and ust info
+    let luna_info = AssetInfo::NativeToken {
+        denom: "luna".to_string(),
+    };
+    let ust_info = AssetInfo::NativeToken {
+        denom: "ust".to_string(),
+    };
+
+    let mut assets = Vec::new();
+    assets.push(InstantiateAssetInfo {
+        info: luna_info.clone(),
+        address: Addr::unchecked("luna_addr"),
+        oracle: OracleInterface::from_dummy(100_000_000, -6),
+        ..create_instantiate_asset_info()
+    });
+    assets.push(InstantiateAssetInfo {
+        info: ust_info.clone(),
+        address: Addr::unchecked("ust_addr"),
+        oracle: OracleInterface::from_dummy(1_000_000, -6),
+        ..create_instantiate_asset_info()
+    });
+
+    let msg = InstantiateMsg {
+        assets: assets,
+        ..create_instantiate_msg()
+    };
+
+    let info = mock_info(sender, &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    deps
+}
 
 #[test]
 fn proper_initialization() {
@@ -453,6 +493,8 @@ fn imbalanced_basket_big_double_balanced_add() {
     assert_eq!(vec![Uint128::new(0)], fees);
 }
 
+// TODO: Uncomment and make the following two tests pass for calculate aum
+
 // #[test]
 // fn test_calculate_aum_one_asset() {
 //     let mut basket = create_basket();
@@ -510,32 +552,9 @@ fn single_asset_deposit() {
     let luna_info = AssetInfo::NativeToken {
         denom: "luna".to_string(),
     };
-    let ust_info = AssetInfo::NativeToken {
-        denom: "ust".to_string(),
-    };
-
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        ..create_instantiate_asset_info()
-    });
-    assets.push(InstantiateAssetInfo {
-        info: ust_info.clone(),
-        address: Addr::unchecked("ust_addr"),
-        oracle: OracleInterface::from_dummy(1_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
-
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
 
     let sender = "addr0000";
-    let info = mock_info(sender, &[]);
-    let env = mock_env();
-    let _res = instantiate(deps.as_mut(), env, info, msg).unwrap();
+    let mut deps = instantiate_setup(sender);
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked(FAKE_LP_TOKEN_ADDRESS);
@@ -563,42 +582,12 @@ fn single_asset_deposit() {
 }
 
 #[ignore = "Multi-asset deposits are not yet implemented"]
-#[allow(unreachable_code)] // TODO: remove once todo is done!
+#[allow(unreachable_code)] // TODO: remove once multi-asset deposits are done, and make test run!
 #[test]
 fn multi_asset_deposit() {
     todo!("Wait until multi-asset deposits are implemented");
-    let mut deps = cosmwasm_std::testing::mock_dependencies(&[]);
-
-    // luna and ust info
-    let luna_info = AssetInfo::NativeToken {
-        denom: "luna".to_string(),
-    };
-    let ust_info = AssetInfo::NativeToken {
-        denom: "ust".to_string(),
-    };
-
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        oracle: OracleInterface::from_dummy(100_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
-    assets.push(InstantiateAssetInfo {
-        info: ust_info.clone(),
-        address: Addr::unchecked("ust_addr"),
-        oracle: OracleInterface::from_dummy(1_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
-
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
-
     let sender = "addr0000";
-    let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let mut deps = instantiate_setup(sender);
 
     let _basket: Basket = query_basket(deps.as_ref()).unwrap();
 
@@ -696,15 +685,16 @@ fn multi_asset_deposit() {
     assert_eq!(true, depositor_balance_lp_token.amount > Uint128::new(0)); // TODO figure what the exact amount should be and check it
 }
 
-/// Make an initial deposit and then a subsequent deposit
+/// Make an initial deposit and then a subsequent deposit of equal amounts
 /// Check that the resulting pool reserves are the sum of the two deposits and match the contract balance
 /// Check that the second deposit has fees subtracted from the LP tokens they receive
-/// For later: check that the correct amount of fees are taken
+/// Make a small swap that charges only ~the base fee to the trader
+/// Make a small withdrawal that carges ~the base fee to the withdrawer
 #[test]
 fn multiple_deposits_and_swap_and_withdraw() {
     use crate::state::BASKET;
-    let mut deps = mock_dependencies(&[]);
     let sender = "addr0000";
+    let mut deps = instantiate_setup(sender);
 
     deps.querier.with_token_balances(&[(
         &String::from(FAKE_LP_TOKEN_ADDRESS),
@@ -719,27 +709,8 @@ fn multiple_deposits_and_swap_and_withdraw() {
         denom: "ust".to_string(),
     };
 
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        oracle: OracleInterface::from_dummy(100_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
-    assets.push(InstantiateAssetInfo {
-        info: ust_info.clone(),
-        address: Addr::unchecked("ust_addr"),
-        oracle: OracleInterface::from_dummy(1_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
+    let sender = "addr0000";
 
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
-
-    let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked(FAKE_LP_TOKEN_ADDRESS);
@@ -932,30 +903,9 @@ fn try_deposit_insufficient_funds() {
     let luna_info = AssetInfo::NativeToken {
         denom: "luna".to_string(),
     };
-    let ust_info = AssetInfo::NativeToken {
-        denom: "ust".to_string(),
-    };
-
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        ..create_instantiate_asset_info()
-    });
-    assets.push(InstantiateAssetInfo {
-        info: ust_info.clone(),
-        address: Addr::unchecked("ust_addr"),
-        ..create_instantiate_asset_info()
-    });
-
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
 
     let sender = "addr0000";
-    let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let mut deps = instantiate_setup(sender);
 
     let luna_amount = 10;
 
@@ -984,30 +934,12 @@ fn try_deposit_insufficient_funds() {
 #[ignore = "Deposit is currently not checked for exceeding the pool reserve limit"]
 #[test]
 fn try_deposit_exceeding_limit() {
-    let mut deps = mock_dependencies(&[]);
-
-    // luna and ust info
     let luna_info = AssetInfo::NativeToken {
         denom: "luna".to_string(),
     };
 
-    // Make the maximum asset amount of luna 10
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        max_asset_amount: Uint128::new(10),
-        ..create_instantiate_asset_info()
-    });
-
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
-
     let sender = "addr0000";
-    let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let mut deps = instantiate_setup(sender);
 
     let depositor = mock_info("first_depositor", &coins(11, "luna"));
     let deposit_asset = Asset {
@@ -1036,29 +968,13 @@ fn try_deposit_exceeding_limit() {
 /// Check that depositing an asset the basket wasn't initialized with fails
 #[test]
 fn try_deposit_unwhitelisted_asset() {
-    let mut deps = mock_dependencies(&[]);
-
     // luna and ust info
     let luna_info = AssetInfo::NativeToken {
         denom: "luna".to_string(),
     };
 
-    // Make the maximum asset amount of luna 10
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        ..create_instantiate_asset_info()
-    });
-
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
-
     let sender = "addr0000";
-    let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let mut deps = instantiate_setup(sender);
 
     let random_asset_info = AssetInfo::NativeToken {
         denom: "random_asset".to_string(),
