@@ -353,9 +353,6 @@ impl PricedAsset {
     pub fn query_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
         let price: Price = self.query_price(querier)?;
-        println!("price: {:?}", price);
-        println!("decimals: {:?}", decimals);
-        println!("casted to {}", safe_u128_to_i64(self.asset.amount.u128())?);
         let value = if price.price.expo < 0 {
             Uint128::from(price.price.price as u128)
             .multiply_ratio(
@@ -365,12 +362,10 @@ impl PricedAsset {
         } else {
             Uint128::from(price.price.price as u128)
             .multiply_ratio(
-                self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32 + price.price.expo.abs() as u32),
+                self.asset.amount.u128() * 10_u128.pow(-USD_VALUE_PRECISION as u32 + price.price.expo.unsigned_abs()),
                 10_u128.pow(decimals as u32)
             )
         };
-        println!("value in query price {:?}", value);
-        //let value = Price::new(value).to_Uint128(USD_VALUE_PRECISION)?;
         Ok(value)
     }
 }
