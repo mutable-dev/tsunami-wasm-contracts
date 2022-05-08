@@ -188,7 +188,7 @@ pub fn increase_position(
     let average_price: Uint128 = Uint128::new(
         safe_i64_to_u128(
             priced_position_asset.query_price(&deps.querier)?
-            .price.price
+            .pyth_price.price
         )?
     );
     // When we do have an existing position, we re-compute the average price
@@ -263,7 +263,7 @@ pub fn increase_position(
     // update the size of the position with the new amount of position being added to the position
     position.size = position.size.checked_add(position_amount)?;
     // validate new position is healthy
-    position.validate_health(aum_result.price.price, aum_result.price.expo);
+    position.validate_health(aum_result.pyth_price.price, aum_result.pyth_price.expo);
 
     // increase occupied assets by the amount of new position
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change

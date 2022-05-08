@@ -1223,47 +1223,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
     }
 }
 
-fn instantiate_setup(sender: &str) -> OwnedDeps<MockStorage, MockApi, WasmMockQuerier> {
-    let mut deps = mock_dependencies(&[]);
-
-    deps.querier.with_token_balances(&[(
-        &String::from(FAKE_LP_TOKEN_ADDRESS),
-        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::from(0_u32))],
-    )]);
-
-    // luna and ust info
-    let luna_info = AssetInfo::NativeToken {
-        denom: "luna".to_string(),
-    };
-    let ust_info = AssetInfo::NativeToken {
-        denom: "ust".to_string(),
-    };
-
-    let mut assets = Vec::new();
-    assets.push(InstantiateAssetInfo {
-        info: luna_info.clone(),
-        address: Addr::unchecked("luna_addr"),
-        oracle: OracleInterface::from_dummy(100_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
-    assets.push(InstantiateAssetInfo {
-        info: ust_info.clone(),
-        address: Addr::unchecked("ust_addr"),
-        oracle: OracleInterface::from_dummy(1_000_000, -6),
-        ..create_instantiate_asset_info()
-    });
-
-    let msg = InstantiateMsg {
-        assets: assets,
-        ..create_instantiate_msg()
-    };
-
-    let info = mock_info(sender, &[]);
-    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
-    deps
-}
-
-
 /// Check that the resulting pool reserves are the sum of the two deposits and match the contract balance
 /// Check that the second deposit has fees subtracted from the LP tokens they receive
 /// For later: check that the correct amount of fees are taken
