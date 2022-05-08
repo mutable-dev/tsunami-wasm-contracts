@@ -820,7 +820,7 @@ fn two_precise_deposits() {
         basket.assets[1].available_reserves,
         Uint128::new(123_456_789)
     );
-    let balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
+    let _balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
         &QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: FAKE_LP_TOKEN_ADDRESS.to_string(),
             msg: to_binary(&Cw20QueryMsg::TokenInfo {}).unwrap(),
@@ -1040,8 +1040,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
 /// Check that a user trying to send a deposit without transferring the appropriate funds
 #[test]
 fn try_deposit_insufficient_funds() {
-    let mut deps = cosmwasm_std::testing::mock_dependencies(&[]);
-
     // luna and ust info
     let luna_info = AssetInfo::NativeToken {
         denom: "luna".to_string(),
@@ -1112,7 +1110,7 @@ fn try_deposit_exceeding_limit() {
 #[test]
 fn try_deposit_unwhitelisted_asset() {
     // luna and ust info
-    let luna_info = AssetInfo::NativeToken {
+    let _luna_info = AssetInfo::NativeToken {
         denom: "luna".to_string(),
     };
 

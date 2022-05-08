@@ -559,17 +559,17 @@ pub fn calculate_fee_basis_points(
         let initial_reserve_value = initial_reserve_values[i];
         let next_reserve_usd_value = next_reserve_usd_values[i];
 
+        // First depositor should not be hit with a fee
+        if  initial_reserve_value.is_zero() {
+            fee_bps.push(Uint128::zero());
+            break
+        }
+
         // Compute target value based on weight, so that we may compare to the updated value
         let initial_target_lp_usd_value: Uint128 = initial_aum_value
             .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());
         let new_target_lp_usd_value: Uint128 = new_aum_value
             .multiply_ratio(offer_or_ask_asset.token_weight, basket.get_total_weights());
-
-        // First depositor should not be hit with a fee
-        if new_aum_value.is_zero() || initial_reserve_value.is_zero() {
-            fee_bps.push(Uint128::zero());
-            break
-        }
 
         // Calculate the initial and new distance from the target value
         let initial_distance: Uint128 = initial_target_lp_usd_value.max(initial_reserve_value)
