@@ -1283,8 +1283,6 @@ fn increase_position() {
         let expected_attribute = expected_attributes[i].clone();
         assert_eq!(actual_attribute, expected_attribute);
     }
-    let withdraw_redemption_asset = &increase_res.attributes[2].value;
-    let withdraw_fee_bps = &increase_res.attributes[3].value;
 }
 
 /// Check that a user trying to send a deposit without transferring the appropriate funds
