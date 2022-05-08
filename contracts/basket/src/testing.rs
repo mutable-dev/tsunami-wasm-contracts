@@ -720,8 +720,10 @@ fn multi_asset_deposit() {
 /// Make an initial deposit of a highly precise amount of luna
 /// Make a second deposit of a highly precise amount of ust
 /// Make sure that the fees charged and check the lp tokens are correctly distributed
+/// Then make 2 precise swaps and make sure output is set correctly
+/// Then make a precise withdrawal with the more desired asset and make sure it punishes correctly
 #[test]
-fn two_precise_deposits() {
+fn two_precise_deposits_swap_and_withdraw() {
     use crate::state::BASKET;
     let sender = "addr0000";
     let mut deps = instantiate_setup(sender);
@@ -820,12 +822,133 @@ fn two_precise_deposits() {
         basket.assets[1].available_reserves,
         Uint128::new(123_456_789)
     );
-    let _balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
-        &QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: FAKE_LP_TOKEN_ADDRESS.to_string(),
-            msg: to_binary(&Cw20QueryMsg::TokenInfo {}).unwrap(),
-        })
-    ).unwrap().unwrap()).unwrap();
+
+    let swap = ExecuteMsg::Swap {
+        sender: Addr::unchecked(sender),
+        offer_asset: Asset {
+            info: ust_info.clone(),
+            amount: Uint128::new(98_765_432),
+        },
+        ask_asset: luna_info.clone(),
+        to: None,
+        max_spread: None,
+        belief_price: None,
+    };
+
+    let swapper = mock_info(sender, &coins(98_765_432, "ust"));
+    let swap_res = execute(deps.as_mut(), mock_env(), swapper.clone(), swap).unwrap();
+    
+    let expected_swap_attributes = vec![
+        attr("action", "swap"),
+        attr("sender", swapper.clone().sender.as_str()),
+        attr("receiver", swapper.clone().sender.as_str()),
+        attr("offer_asset", "ust"),
+        attr("ask_asset", "luna"),
+        attr("offer_amount", "98765432"),
+        attr("return_asset_amount", "987654"),
+        attr("offer_bps", "0"),
+        attr("ask_bps", "0")
+    ];
+    for i in 0..expected_swap_attributes.len() {
+        let actual_attribute = swap_res.attributes[i].clone();
+        let expected_attribute = expected_swap_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute );
+    }
+
+    match &swap_res.messages[0].msg {
+        CosmosMsg::Bank(BankMsg::Send { to_address, amount }) => {
+            assert_eq!(amount[0].amount, Uint128::new(987_654));
+            assert_eq!(to_address, sender);
+        }
+        _ => panic!("Expected BankMsg"),
+    }
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(
+        basket.assets[0].available_reserves,
+        Uint128::new(986666667)
+    );
+    assert_eq!(
+        basket.assets[1].available_reserves,
+        Uint128::new(222222221)
+    );
+
+    let swap1 = ExecuteMsg::Swap {
+        sender: Addr::unchecked(sender),
+        offer_asset: Asset {
+            info: luna_info.clone(),
+            amount: Uint128::new(987_654),
+        },
+        ask_asset: ust_info.clone(),
+        to: None,
+        max_spread: None,
+        belief_price: None,
+    };
+
+    let swapper = mock_info(sender, &coins(987_654, "luna"));
+    let swap_res = execute(deps.as_mut(), mock_env(), swapper.clone(), swap1).unwrap();
+    
+    let expected_swap_attributes = vec![
+        attr("action", "swap"),
+        attr("sender", swapper.clone().sender.as_str()),
+        attr("receiver", swapper.clone().sender.as_str()),
+        attr("offer_asset", "luna"),
+        attr("ask_asset", "ust"),
+        attr("offer_amount", "987654"),
+        attr("return_asset_amount", "98192560"),
+        attr("offer_bps", "29"),
+        attr("ask_bps", "29")
+    ];
+    for i in 0..expected_swap_attributes.len() {
+        let actual_attribute = swap_res.attributes[i].clone();
+        let expected_attribute = expected_swap_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute );
+    }
+
+    match &swap_res.messages[0].msg {
+        CosmosMsg::Bank(BankMsg::Send { to_address, amount }) => {
+            assert_eq!(amount[0].amount, Uint128::new(98192560));
+            assert_eq!(to_address, sender);
+        }
+        _ => panic!("Expected BankMsg"),
+    }
+
+    let basket: Basket = query_basket(deps.as_ref()).unwrap();
+    assert_eq!(
+        basket.assets[0].available_reserves,
+        Uint128::new(987654321)
+    );
+    assert_eq!(
+        basket.assets[1].available_reserves,
+        Uint128::new(124029661)
+    );
+
+    let withdraw = ExecuteMsg::Receive {
+        msg: Cw20ReceiveMsg {
+            amount: Uint128::new(1_123_456),
+            sender: sender.to_string(),
+            msg: to_binary(&Cw20HookMsg::WithdrawLiquidity {
+                basket_asset: basket.assets[1].clone(),
+            })
+            .unwrap(),
+        },
+    };
+
+    // Mock what the token balances should be
+    deps.querier.with_token_balances(&[(
+        &String::from(FAKE_LP_TOKEN_ADDRESS),
+        &[(&String::from(MOCK_CONTRACT_ADDR), &Uint128::from(98_888_888_889u64))],
+    )]);
+
+    let empty_coins: [Coin; 0] = [];
+    let withdrawer = mock_info(FAKE_LP_TOKEN_ADDRESS, &empty_coins);
+    let withdraw_res = execute(deps.as_mut(), mock_env(), withdrawer, withdraw).unwrap();
+
+    // Should be a high fee since there isn't much ust in the basket, but that is what we take
+    let withdraw_redemption_asset = &withdraw_res.attributes[2].value;
+    let withdraw_fee_bps = &withdraw_res.attributes[3].value;
+    assert_eq!(withdraw_redemption_asset, "1120ust");
+    assert_eq!(withdraw_fee_bps, "29");
 }
 
 /// Make an initial deposit and then a subsequent deposit of equal amounts
@@ -933,13 +1056,6 @@ fn multiple_deposits_and_swap_and_withdraw() {
         Uint128::new(10_000_000)
     );
     assert_eq!(basket.assets[1].available_reserves, Uint128::new(1_000_000_000));
-    let balances: TokenInfoResponse = from_binary(&deps.querier.handle_query(
-        &QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: FAKE_LP_TOKEN_ADDRESS.to_string(),
-            msg: to_binary(&Cw20QueryMsg::TokenInfo {}).unwrap(),
-        })
-    ).unwrap().unwrap()).unwrap();
-    println!("balances is = {balances:?}");
 
     let swap = ExecuteMsg::Swap {
         sender: Addr::unchecked(sender),
