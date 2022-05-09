@@ -159,7 +159,8 @@ pub fn withdraw_liquidity(
     // Update refund_asset with fee
     redemption_value =
         redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
-    // milli-USDs per token
+
+    // micro-USDs per token
     let invert_price: Price = get_unit_price()
         .div(&ask_asset.query_price(&deps.querier)?.pyth_price)
         .expect("Couldn't invert ask_asset price in withdraw_liquidity");
