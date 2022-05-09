@@ -158,11 +158,10 @@ pub fn increase_position(
         .ok_or_else(|| ContractError::AssetNotInBasket)?;
 
     // get the composite key of the user + asset id + direction
-    let asset_key: String;
-    match &position_asset.info {
-        AssetInfo::Token{contract_addr} => { asset_key = contract_addr.to_string(); },
-        AssetInfo::NativeToken{denom} => { asset_key = denom.to_string(); },
-    }
+    let asset_key: String = match &position_asset.info {
+        AssetInfo::Token{contract_addr} => contract_addr.to_string(),
+        AssetInfo::NativeToken{denom} => denom.to_string(),
+    };
 
     // need to get the price of position asset and the price of the collateral asset
     let mut priced_position_asset = PricedAsset::new(position_asset.clone(), position_basket_asset.clone());
@@ -193,7 +192,7 @@ pub fn increase_position(
         )?
     );
     // When we do have an existing position, we re-compute the average price
-    if !position_option.is_none() {
+    if position_option.is_some() {
         //get existing size and existing price + new delta size * new price / 2
         let existing_size: Uint128 = position.size;
         let size_delta = position_asset.amount;
