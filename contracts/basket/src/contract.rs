@@ -383,21 +383,6 @@ fn _calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Uint128 {
 }
 
 
-// TODO: Change decimal precision to go to 1000th place on USD
-// TODO: WATCH OUT FOR OVERFLOW, could happen with larger negative exponent
-fn asset_amount_to_usd(
-    amount: Uint128,
-    tokens_decimals: u32,
-    price: Uint128,
-    price_exponent: i32,
-) -> Result<Uint128, ContractError> {
-    println!("NOT BREAKING here yet");
-    assert!(price_exponent <= 0);
-    let gross_value: Uint128 = amount.multiply_ratio(price, 10_u128.pow(tokens_decimals + price_exponent.abs() as u32)); //abs is okay because we asserted is negative
-    println!("returning");
-    Ok(gross_value)
-}
-
 fn get_funding_fee(
     cumulative_funding_rate: Uint128,
     entry_funding_rate: Uint128,
