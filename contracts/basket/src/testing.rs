@@ -10,13 +10,13 @@ use crate::{
     state::{Basket, BasketAsset, TickerData},
 };
 
-use cosmwasm_std::coins;
+use cosmwasm_std::{coins, Binary};
 use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR, MockStorage, MockApi};
 use cosmwasm_std::{
     OwnedDeps, attr, from_binary, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Coin, CosmosMsg,
-    QueryRequest, ReplyOn, StdError::GenericErr, SubMsg, Uint128, WasmMsg, WasmQuery,
+    QueryRequest, ReplyOn, StdError::GenericErr, SubMsg, Uint128, WasmMsg,
 };
-use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse, Cw20QueryMsg, TokenInfoResponse};
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse };
 use pyth_sdk_terra::PriceIdentifier;
 
 const FAKE_LP_TOKEN_ADDRESS: &str = "lp-token-address";
@@ -923,16 +923,16 @@ fn two_precise_deposits_swap_and_withdraw() {
         Uint128::new(124029661)
     );
 
-    let withdraw = ExecuteMsg::Receive {
-        msg: Cw20ReceiveMsg {
+    let withdraw = ExecuteMsg::Receive(
+        Cw20ReceiveMsg {
             amount: Uint128::new(1_123_456),
             sender: sender.to_string(),
             msg: to_binary(&Cw20HookMsg::WithdrawLiquidity {
-                basket_asset: basket.assets[1].clone(),
+                asset: basket.assets[1].info.clone(),
             })
             .unwrap(),
         },
-    };
+    );
 
     // Mock what the token balances should be
     deps.querier.with_token_balances(&[(
@@ -1102,16 +1102,16 @@ fn multiple_deposits_and_swap_and_withdraw() {
         basket.assets[1].available_reserves,
         Uint128::new(1010000000)
     );
-    let withdraw = ExecuteMsg::Receive {
-        msg: Cw20ReceiveMsg {
+    let withdraw = ExecuteMsg::Receive(
+        Cw20ReceiveMsg {
             amount: Uint128::new(100_000),
             sender: sender.to_string(),
             msg: to_binary(&Cw20HookMsg::WithdrawLiquidity {
-                basket_asset: basket.assets[0].clone(),
+                asset: basket.assets[0].info.clone(),
             })
             .unwrap(),
         },
-    };
+    );
 
     deps.querier.with_token_balances(&[(
         &String::from(FAKE_LP_TOKEN_ADDRESS),
@@ -1256,5 +1256,17 @@ fn try_deposit_unwhitelisted_asset() {
                 x
             );
         }
+    }
+}
+
+#[test]
+fn test_from_binary() {
+    match from_binary(&Binary::from_base64("eyJ3aXRoZHJhd19saXF1aWRpdHkiOnsiYXNzZXQiOnsibmF0aXZlX3Rva2VuIjp7ImRlbm9tIjoidXVzZCJ9fX19").unwrap()) {
+        Ok(Cw20HookMsg::WithdrawLiquidity { asset }) => {
+            assert_eq!(asset, AssetInfo::NativeToken {
+                denom: "uusd".to_string(),
+            });
+        },
+        _ => assert!(false, "Expected WithdrawLiquidity"),
     }
 }

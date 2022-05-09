@@ -1,5 +1,5 @@
 use crate::asset::{Asset, AssetInfo};
-use crate::state::{BasketAsset, OracleInterface, TickerData};
+use crate::state::{OracleInterface, TickerData};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw20::{Cw20Coin, Cw20ReceiveMsg, MinterResponse};
 use schemars::JsonSchema;
@@ -41,9 +41,7 @@ pub enum ExecuteMsg {
         slippage_tolerance: Option<Decimal>,
         receiver: Option<String>,
     },
-    Receive {
-        msg: Cw20ReceiveMsg,
-    },
+    Receive(Cw20ReceiveMsg),
     Swap {
         sender: Addr,
         offer_asset: Asset,
@@ -331,5 +329,5 @@ pub enum Cw20HookMsg {
         ask_asset: AssetInfo,
     },
     /// Withdraw liquidity from the pool
-    WithdrawLiquidity { basket_asset: BasketAsset },
+    WithdrawLiquidity { asset: AssetInfo },
 }

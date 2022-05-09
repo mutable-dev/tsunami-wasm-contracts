@@ -74,7 +74,7 @@ pub fn execute(
             slippage_tolerance,
             receiver,
         } => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
-        ExecuteMsg::Receive { msg } => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::Receive( msg ) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::Swap {
             sender,
             offer_asset,
@@ -123,7 +123,7 @@ pub fn withdraw_liquidity(
     info: MessageInfo,
     sender: Addr,
     amount: Uint128,
-    ask_asset: BasketAsset,
+    ask_asset: AssetInfo,
 ) -> Result<Response, ContractError> {
     // Load Basket
     let basket: Basket = BASKET.load(deps.storage)?;
@@ -136,7 +136,7 @@ pub fn withdraw_liquidity(
     // Retrieve ask asset
     let ask_asset = basket.assets
         .iter()
-        .find(|asset| asset.info == ask_asset.info)
+        .find(|asset| asset.info == ask_asset)
         .ok_or(ContractError::AssetNotInBasket)?;
 
     let mut ask_asset = PricedAsset::new(Asset{info: ask_asset.info.clone(), amount: Uint128::zero()}, ask_asset.clone());
@@ -341,13 +341,13 @@ pub fn receive_cw20(
                 ask_asset,
             )
         }
-        Ok(Cw20HookMsg::WithdrawLiquidity { basket_asset }) => withdraw_liquidity(
+        Ok(Cw20HookMsg::WithdrawLiquidity { asset }) => withdraw_liquidity(
             deps,
             env,
             info,
             Addr::unchecked(cw20_msg.sender),
             cw20_msg.amount,
-            basket_asset,
+            asset,
         ),
         Err(err) => Err(ContractError::Std(err)),
     }
