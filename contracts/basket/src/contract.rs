@@ -3,7 +3,7 @@ use crate::{
     error::ContractError,
     msg::*,
     state::{Basket, BasketAsset, BASKET, POSITIONS, Position, ToAssetInfo},
-    querier::{query_supply, query_token_precision},
+    querier::{query_supply},
 };
 #[allow(unused_imports)]
 use cosmwasm_std::{
@@ -14,8 +14,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use protobuf::Message;
-use pyth_sdk_terra::{Price, PriceFeed};
-use std::convert::TryInto;
+use pyth_sdk_terra::{Price};
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "tsunami-basket";
@@ -152,10 +151,10 @@ pub fn increase_position(
     let basket: Basket = BASKET.load(deps.storage)?;
 
     let position_basket_asset = basket.assets.iter().find(|asset| asset.info == position_asset.info)
-        .ok_or_else(|| ContractError::AssetNotInBasket)?;
+        .ok_or(ContractError::AssetNotInBasket)?;
 
     let collateral_basket_asset = basket.assets.iter().find(|asset| asset.info == collateral_asset.info)
-        .ok_or_else(|| ContractError::AssetNotInBasket)?;
+        .ok_or(ContractError::AssetNotInBasket)?;
 
     // get the composite key of the user + asset id + direction
     let asset_key: String = match &position_asset.info {
@@ -192,6 +191,8 @@ pub fn increase_position(
         )?
     );
     // When we do have an existing position, we re-compute the average price
+    // TODO: This is naively computing the average price, we need to fix this to use the correct average price using 
+    // https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L890
     if position_option.is_some() {
         //get existing size and existing price + new delta size * new price / 2
         let existing_size: Uint128 = position.size;
@@ -199,16 +200,9 @@ pub fn increase_position(
         position.average_price = ((existing_size * position.average_price) + (size_delta * average_price)) / Uint128::new(2);
     }
 
-    /// TODO A: Need to add shorting
-    /// Note: This section SHOULD mimic logic in collect margin fees in gmx
-        /// where its taken and given to fee reserves when opening/closing a position
-    let position_asset_decimals: i32 = query_token_precision(&deps.querier, &position_basket_asset.info)?
-        .try_into()
-        .expect("Unable to query for position token decimals");
-    let collateral_asset_decimals: i32 = query_token_precision(&deps.querier, &collateral_basket_asset.info)?
-        .try_into()
-        .expect("Unable to query for position token decimals");
-    println!("calc new margin fee");
+    // TODO A: Need to add shorting
+    // Note: This section SHOULD mimic logic in collect margin fees in gmx
+        // where its taken and given to fee reserves when opening/closing a position
     // TODO MAYBE: Might be using the wrong price here, might have incorrect precision
        // Perhaps we should be using USD precision as the denominator, rather than decimals
        // Are we handling both negatively and positively signed position_asset_decimals
@@ -308,7 +302,7 @@ pub fn increase_position(
     ];
 
     BASKET.save(deps.storage, &mutable_basket)?;
-    POSITIONS.save(deps.storage, (info.sender.clone().as_bytes(), position_asset.clone().info.as_bytes(), is_long.to_string()), &position)?;
+    POSITIONS.save(deps.storage, (info.sender.as_bytes(), position_asset.clone().info.as_bytes(), is_long.to_string()), &position)?;
     Ok(Response::new().add_attributes(attributes))
 }
 
