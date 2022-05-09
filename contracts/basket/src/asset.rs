@@ -325,7 +325,7 @@ impl PricedAsset {
         Ok(decimals)
     }
 
-    pub fn query_price(&mut self, querier: &QuerierWrapper) -> Result<PythPrice, ContractError> {
+    pub fn query_pyth_price(&mut self, querier: &QuerierWrapper) -> Result<PythPrice, ContractError> {
         match self.price {
             Some(price) => Ok(price),
             None => {
@@ -336,9 +336,28 @@ impl PricedAsset {
         }
     }
 
+    pub fn query_price(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
+        let decimals = self.query_decimals(querier)?;
+        let price: PythPrice = self.query_pyth_price(querier)?;
+        let value = if price.pyth_price.expo < 0 {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                10_u128.pow(-USD_VALUE_PRECISION as u32),
+                10_u128.pow(price.pyth_price.expo.unsigned_abs() + decimals.unsigned_abs())
+            )
+        } else {
+            Uint128::from(price.pyth_price.price as u128)
+            .multiply_ratio(
+                10_u128.pow(-USD_VALUE_PRECISION as u32 + price.pyth_price.expo.unsigned_abs()),
+                10_u128.pow(decimals as u32)
+            )
+        };
+        Ok(value)
+    }
+
     pub fn query_contract_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
-        let price: PythPrice = self.query_price(querier)?;
+        let price: PythPrice = self.query_pyth_price(querier)?;
         let value = if price.pyth_price.expo < 0 {
             Uint128::from(price.pyth_price.price as u128)
             .multiply_ratio(
@@ -359,7 +378,7 @@ impl PricedAsset {
 
     pub fn query_value(&mut self, querier: &QuerierWrapper) -> Result<Uint128, ContractError> {
         let decimals = self.query_decimals(querier)?;
-        let price: PythPrice = self.query_price(querier)?;
+        let price: PythPrice = self.query_pyth_price(querier)?;
         let value = if price.pyth_price.expo < 0 {
             Uint128::from(price.pyth_price.price as u128)
             .multiply_ratio(

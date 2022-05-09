@@ -134,6 +134,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 // will receive 
 // context from https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L563
 // TODO: enable shorting
+// TODO: implement the validate health method to validate a position is still good
 pub fn increase_position(
     deps: DepsMut,
     env: Env,
@@ -187,7 +188,7 @@ pub fn increase_position(
     // existing position
     let average_price: Uint128 = Uint128::new(
         safe_i64_to_u128(
-            priced_position_asset.query_price(&deps.querier)?
+            priced_position_asset.query_pyth_price(&deps.querier)?
             .pyth_price.price
         )?
     );
@@ -195,7 +196,7 @@ pub fn increase_position(
     if !position_option.is_none() {
         //get existing size and existing price + new delta size * new price / 2
         let existing_size: Uint128 = position.size;
-        let size_delta = position_amount;
+        let size_delta = position_asset.amount;
         position.average_price = ((existing_size * position.average_price) + (size_delta * average_price)) / Uint128::new(2);
     }
 
@@ -214,12 +215,8 @@ pub fn increase_position(
        // Are we handling both negatively and positively signed position_asset_decimals
        // properly?
     println!("position_amount: {:?}", position_amount);
-    println!("priced_position_asset.query_value(&deps.querier)?: {:?}", priced_position_asset.query_value(&deps.querier)?);
-    let new_position_value = position_amount
-        .multiply_ratio(
-            priced_position_asset.query_value(&deps.querier)?,
-            Uint128::new(10_u128.pow(position_asset_decimals.abs() as u32))
-        );
+    println!("priced_position_asset.query_value(&deps.querier)?: {:?}", priced_position_asset.query_pyth_price(&deps.querier)?);
+    let new_position_value = priced_position_asset.query_value(&deps.querier)?;
 
     // Convert from a position fee value to be denominated in the collateral asset
     println!("new_position_value {}", new_position_value);
@@ -227,10 +224,10 @@ pub fn increase_position(
     println!("position_fee_value {}", position_fee_value);
     let position_fee_in_collateral_asset = position_fee_value
         .multiply_ratio(
-            Uint128::new(10_u128.pow(collateral_asset_decimals.abs() as u32)),
-            priced_collateral_asset.query_value(&deps.querier)?,
+            Uint128::new(1),
+            priced_collateral_asset.query_price(&deps.querier)?,
         );
-    
+    println!("position_fee_in_collateral_asset {}", position_fee_in_collateral_asset);
     // recompute the accumulative funding rate for the position asset
     println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
@@ -741,7 +738,7 @@ pub fn swap(
         BASIS_POINTS_PRECISION,
     );
     // Get value of ask per unit usd, e.g. microUSD
-    let ask_per_unit_usd = ask_asset.query_price(&deps.querier)?.pyth_price.price as u128;
+    let ask_per_unit_usd = ask_asset.query_pyth_price(&deps.querier)?.pyth_price.price as u128;
     // The price of a lamport is 10^ask_decimals lower, so multiply refund_value by appropriate power of 10 then divide by ask price
     let return_asset_amount =
         return_asset_value.multiply_ratio(10_u128.pow(ask_asset.query_decimals(&deps.querier)? as u32), ask_per_unit_usd);
