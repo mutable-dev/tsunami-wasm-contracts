@@ -29,7 +29,6 @@ const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 // Calculate USD value of asset down to this precision
 pub const USD_VALUE_PRECISION: i32 = -6;
 pub const LP_DECIMALS: u8 = 9;
-const PD_EXPO: i32 = -9;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -160,11 +159,8 @@ pub fn withdraw_liquidity(
     redemption_value =
         redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
 
-    // micro-USDs per token
-    let invert_price: Price = get_unit_price()
-        .div(&ask_asset.query_price(&deps.querier)?.pyth_price)
-        .expect("Couldn't invert ask_asset price in withdraw_liquidity");
-    let redemption_amount = redemption_value / safe_price_to_Uint128(invert_price, ask_asset.query_decimals(&deps.querier)? + USD_VALUE_PRECISION + PD_EXPO)?;
+    let decimals = ask_asset.query_decimals(&deps.querier)?;
+    let redemption_amount = redemption_value.multiply_ratio(Uint128::from(10_u64).pow(decimals as u32), ask_asset.query_price(&deps.querier)?.to_Uint128(-decimals)?);
     let redemption_asset = Asset {
         amount: redemption_amount,
         info: ask_asset.asset.info,
