@@ -9,9 +9,9 @@
   },
   "testnet": {
     "basket": {
-      "codeId": "70741",
+      "codeId": "70995",
       "contractAddresses": {
-        "default": "terra1dxwc3jj0eee64wnnqfjsusd9jwxcn6w9kfzpdf"
+        "default": "terra17832qjy8fpz5gqleee70pdpcjkcnpfep0v68vr"
       }
     }
   }

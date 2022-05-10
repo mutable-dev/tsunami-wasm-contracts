@@ -56,18 +56,9 @@ async function main(denom, amount) {
                 }
     };
 
-    const contractMsg = {receive: {
-        msg: {
-            sender: wallet.key.accAddress,
-            amount, 
-            msg: btoa(JSON.stringify(cw20HookMsg)),
-        }
-    }}
-
     const msg = new MsgExecuteContract(
         wallet.key.accAddress,
         lpContract,
-        // contractMsg,
         {
             send: {
                 contract,
@@ -81,18 +72,18 @@ async function main(denom, amount) {
     const result = await lcd.tx.broadcast(tx);
     console.log(`withdraw tx result: ${result}`);
 
-    // const [balanceAfter] = await lcd.bank.balance(mk.accAddress);
-    // const lpBalanceAfter = await lcd.wasm.contractQuery(
-    //     lpContract, 
-    //     {
-    //         balance: { address: mk.accAddress }
-    //     },
-    // );
+    const [balanceAfter] = await lcd.bank.balance(mk.accAddress);
+    const lpBalanceAfter = await lcd.wasm.contractQuery(
+        lpContract, 
+        {
+            balance: { address: mk.accAddress }
+        },
+    );
 
-    // console.log("after provide liquidity, you have:");
-    // console.log(balanceAfter.toData());
-    // console.log("LP token:");
-    // console.log(lpBalanceAfter);
+    console.log("after withdraw, you have:");
+    console.log(balanceAfter.toData());
+    console.log("LP token:");
+    console.log(lpBalanceAfter);
 }
 
 const args = process.argv.slice(2);
