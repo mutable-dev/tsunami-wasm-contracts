@@ -228,7 +228,7 @@ pub fn increase_position(
     let funding_rate_fee_value = priced_position_asset.query_value(&deps.querier)?
         .checked_mul(funding_rate_fee_in_position_asset)?;
     // recompute total fees in collateral asset
-    let total_fees_value = position_fee_value.checked_add(funding_rate_fee_value)?;
+    let total_fees_value = position_fee_value + funding_rate_fee_value;
     let total_fees_in_collateral_asset = total_fees_value
         .multiply_ratio(Uint128::new(1), priced_collateral_asset.query_value(&deps.querier)?);
     // calculate the new amount of collateral
@@ -236,22 +236,22 @@ pub fn increase_position(
     println!("calc new collateral");
     // check that the total collateral is more than the current fee
     assert_eq!(new_collateral
-        .checked_add(position.collateral_amount)?
-        .checked_sub(total_fees_in_collateral_asset)? >= Uint128::new(0), true);
+         + position.collateral_amount
+         - total_fees_in_collateral_asset >= Uint128::new(0), true);
 
     // add new fees on position to the fee_reserve of that asset in the basket
-    let new_collateral_asset_fee_reserves = collateral_basket_asset.fee_reserves.checked_add(total_fees_in_collateral_asset)?;
+    let new_collateral_asset_fee_reserves = collateral_basket_asset.fee_reserves + total_fees_in_collateral_asset;
 
     // add new amount of collateral to the positions collateral
-    position.collateral_amount = position.collateral_amount.checked_add(new_collateral)?;
+    position.collateral_amount = position.collateral_amount + new_collateral;
     // subtract the new fees from the collateral
-    position.collateral_amount = position.collateral_amount.checked_sub(total_fees_in_collateral_asset)?;
+    position.collateral_amount = position.collateral_amount - total_fees_in_collateral_asset;
     // update the new funding rate on the position
     position.entry_funding_rate = position_basket_asset.cumulative_funding_rate;
     // update the time on the position with the current time
     position.last_increased_time = env.block.time;
     // update the size of the position with the new amount of position being added to the position
-    position.size = position.size.checked_add(position_amount)?;
+    position.size = position.size + position_amount;
     // validate new position is healthy
     position.validate_health(aum_result.pyth_price.price, aum_result.pyth_price.expo);
 
@@ -259,15 +259,15 @@ pub fn increase_position(
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change
     // in the future as we decide where to put the collateral in our internal accouting
     println!("total fees:$10 {} new position value: $10_000 {}", total_fees_value, new_position_value);
-    let new_position_asset_occupied_reserves = position_basket_asset.occupied_reserves.checked_add(position_amount)?;
-    let new_position_asset_available_reserves = position_basket_asset.available_reserves.checked_sub(position_amount)?;
+    let new_position_asset_occupied_reserves = position_basket_asset.occupied_reserves + position_amount;
+    let new_position_asset_available_reserves = position_basket_asset.available_reserves - position_amount;
 
     // increase global net liabilities by the fee + position size delta
     // decrease global net liabilities by the collateral delta
     let new_collateral_asset_liabilities = collateral_basket_asset.net_protocol_liabilities
-        .checked_add(position_fee_value)?
-        .checked_add(new_position_value)?
-        .checked_sub(new_collateral)?;
+         + position_fee_value
+         + new_position_value
+         - new_collateral;
     // TODO: Decide if the following makes sense, I feel like collateral should NOT go in available_reserves
     // GMX lets people take out margin using other trader's collateral, but does not let people swap against 
     // That collateral. I think even letting people use your collateral as their margin is a bad idea.
