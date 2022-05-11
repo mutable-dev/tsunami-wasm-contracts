@@ -33,13 +33,13 @@
               "oracle": {
                 "Stub": {
                   "price": 10000,
-                  "expo": -2
+                  "expo": -6
                 }
               },
               "backup_oracle": {
                 "Stub": {
                   "price": 10000,
-                  "expo": -2
+                  "expo": -6
                 }
               },
               "ticker_data": {
