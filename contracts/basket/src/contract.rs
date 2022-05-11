@@ -1,5 +1,5 @@
 use crate::{
-    asset::{addr_validate_to_lower, Asset, AssetInfo, PricedAsset, safe_i64_to_u128},
+    asset::{addr_validate_to_lower, Asset, AssetInfo, PricedAsset},
     error::ContractError,
     msg::*,
     state::{Basket, BasketAsset, BASKET, POSITIONS, Position, ToAssetInfo},
@@ -168,9 +168,6 @@ pub fn increase_position(
     // need to get the price of position asset and the price of the collateral asset
     let mut priced_position_asset = PricedAsset::new(position_asset.clone(), position_basket_asset.clone());
     let mut priced_collateral_asset = PricedAsset::new(collateral_asset.clone(), collateral_basket_asset.clone());
-    
-    // price_feeds.iter().find(|price_feed| price_feed.id == asset_key)?.price;
-    let aum_result = basket.calculate_aum(&deps.querier)?;
 
     // calculates the funding rate result for an asset
     let new_position_funding_rate_delta = calculate_funding_rate(&env, position_basket_asset.clone());
@@ -236,17 +233,21 @@ pub fn increase_position(
     let new_collateral_asset_fee_reserves = collateral_basket_asset.fee_reserves + total_fees_in_collateral_asset;
 
     // add new amount of collateral to the positions collateral
-    position.collateral_amount = position.collateral_amount + new_collateral;
+    position.collateral_amount += new_collateral;
     // subtract the new fees from the collateral
-    position.collateral_amount = position.collateral_amount - total_fees_in_collateral_asset;
+    position.collateral_amount -= total_fees_in_collateral_asset;
     // update the new funding rate on the position
     position.entry_funding_rate = position_basket_asset.cumulative_funding_rate;
     // update the time on the position with the current time
     position.last_increased_time = env.block.time;
     // update the size of the position with the new amount of position being added to the position
-    position.size = position.size + position_amount;
+    position.size += position_amount;
     // validate new position is healthy
-    position.validate_health(aum_result.pyth_price.price, aum_result.pyth_price.expo);
+    position.clone().validate_health(
+        &mut PricedAsset::new(collateral_asset.clone(), collateral_basket_asset.clone()),
+        &mut PricedAsset::new(position_asset.clone(), position_basket_asset.clone()),
+        deps.querier.clone()
+    )?;
 
     // increase occupied assets by the amount of new position
     // ALSO: related to the next todo, right now add the collateral to the occupied_reserves, this may change

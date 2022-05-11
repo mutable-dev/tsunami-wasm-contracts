@@ -68,6 +68,9 @@ pub enum ContractError {
     #[error("Price not found for asset")]
     PriceNotFound,
 
+    #[error("Position is unhealthy")]
+    PositionNotHealthy,
+
     #[error("Price to Uint128 received invalid price (expected_expo = {expected_expo:?}, expo = {expo:?})")]
     IncorrectDecimals {
         expo: i32,

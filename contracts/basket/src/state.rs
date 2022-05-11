@@ -1,10 +1,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Timestamp, StdResult};
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Timestamp, StdResult, DepsMut};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
-use crate::asset::{Asset, AssetInfo, safe_u128_to_i64};
+use crate::asset::{Asset, AssetInfo, safe_u128_to_i64, PricedAsset};
 use crate::price::PythPrice;
 use crate::contract::USD_VALUE_PRECISION;
 use crate::msg::{InstantiateAssetInfo, InstantiateMsg};
@@ -422,10 +422,24 @@ impl Position {
 		}
 	}
 
-	// TODO: Implement this where it takes in a price of an asset
-	// and determines whether or not the position needs to be liquidated
-	pub fn validate_health(&self, price: i64, exponent: i32 ) -> bool {
-		true
+    // Takes in a position determines if the collateral value is more than 5% greater than the position value
+	pub fn validate_health(
+        self,
+        priced_collateral_asset: &mut PricedAsset,
+        priced_position_asset: &mut PricedAsset,
+        querier: cosmwasm_std::QuerierWrapper 
+    ) -> Result<bool, ContractError> {
+        let size = self.size;
+        let position_price =  priced_position_asset.query_price(&querier)?;
+        let collateral_price = priced_collateral_asset.query_price(&querier)?;
+        let position_value = size * position_price;
+        let collateral_value = self.collateral_amount * collateral_price;
+        // Collateral must be worth 5% more than position value to be healthy
+        if position_value.multiply_ratio(Uint128::new(105), Uint128::new(100)) > collateral_value {
+            Ok(true)
+        } else {
+            Err(ContractError::PositionNotHealthy)
+        }
 	}
 }
 
