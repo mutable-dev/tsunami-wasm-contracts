@@ -28,8 +28,11 @@ const BASIS_POINTS_PRECISION: Uint128 = Uint128::new(10_000);
 const FUNDING_RATE_PRECISION: Uint128 = Uint128::new(1_000_000);
 const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
-const FUNDING_RATE_INTERVAL: Uint128 = Uint128::new(8);
-const FUNDING_RATE_FACTOR: Uint128 = Uint128::new(10000);
+// Represents the 8 hour interval in nano seconds
+const FUNDING_RATE_INTERVAL: Uint128 = Uint128::new(28800000000000);
+// Represents the funding rate fee per interval
+// Should represent 70% APY on an annualized basis: when multiplied by 365 days * 4 intervals a day
+const FUNDING_RATE_FACTOR: Uint128 = Uint128::new(479);
 
 // Calculate USD value of asset down to this precision
 pub const USD_VALUE_PRECISION: i32 = -6;
@@ -169,8 +172,8 @@ pub fn increase_position(
     // price_feeds.iter().find(|price_feed| price_feed.id == asset_key)?.price;
     let aum_result = basket.calculate_aum(&deps.querier)?;
 
-    // update funding rates on the asset
-    let new_position_funding_rate_result = calculate_funding_rate(&env, position_basket_asset.clone());
+    // calculates the funding rate result for an asset
+    let new_position_funding_rate_delta = calculate_funding_rate(&env, position_basket_asset.clone());
     
     // get the position of the user from deps.storage, may be none
     let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
@@ -180,24 +183,16 @@ pub fn increase_position(
         None => {},
     }
 
-
-    println!("see if we have pos: aum: {:?}", aum_result);
-    // Calculate the average price, which is useful when we want add to an
-    // existing position
-    let average_price: Uint128 = Uint128::new(
-        safe_i64_to_u128(
-            priced_position_asset.query_pyth_price(&deps.querier)?
-            .pyth_price.price
-        )?
-    );
     // When we do have an existing position, we re-compute the average price
+    // (p1 * s1 + p2 * s2) / (s1 + s2)
     // TODO: This is naively computing the average price, we need to fix this to use the correct average price using 
     // https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L890
     if position_option.is_some() {
         //get existing size and existing price + new delta size * new price / 2
         let existing_size: Uint128 = position.size;
         let size_delta = position_asset.amount;
-        position.average_price = ((existing_size * position.average_price) + (size_delta * average_price)) / Uint128::new(2);
+        let cur_position_asset_price = priced_position_asset.query_price(&deps.querier)?;
+        position.average_price = ((existing_size * position.average_price) + (size_delta * cur_position_asset_price)) / (existing_size + size_delta);
     }
 
     // TODO A: Need to add shorting
@@ -207,14 +202,10 @@ pub fn increase_position(
        // Perhaps we should be using USD precision as the denominator, rather than decimals
        // Are we handling both negatively and positively signed position_asset_decimals
        // properly?
-    println!("position_amount: {:?}", position_amount);
-    println!("priced_position_asset.query_value(&deps.querier)?: {:?}", priced_position_asset.query_pyth_price(&deps.querier)?);
     let new_position_value = priced_position_asset.query_value(&deps.querier)?;
 
     // Convert from a position fee value to be denominated in the collateral asset
-    println!("new_position_value {}", new_position_value);
     let position_fee_value = new_position_value.multiply_ratio(Uint128::new(10), BASIS_POINTS_PRECISION);
-    println!("position_fee_value {}", position_fee_value);
     let position_fee_in_collateral_asset = position_fee_value
         .multiply_ratio(
             Uint128::new(1),
@@ -222,11 +213,13 @@ pub fn increase_position(
         );
     println!("position_fee_in_collateral_asset {}", position_fee_in_collateral_asset);
     // recompute the accumulative funding rate for the position asset
-    println!("calc new funding rate fee");
     let existing_funding_rate = if position_option.is_none() { Uint128::new(0) } else { position.entry_funding_rate };
-    let funding_rate_fee_in_position_asset = get_funding_fee(position_basket_asset.cumulative_funding_rate, existing_funding_rate, position.size)?;
-    let funding_rate_fee_value = priced_position_asset.query_value(&deps.querier)?
-        .checked_mul(funding_rate_fee_in_position_asset)?;
+    let new_cumulative_funding_rate = new_position_funding_rate_delta.funding_rate + existing_funding_rate;
+    let funding_rate_fee_in_position_asset = get_funding_fee(new_cumulative_funding_rate, existing_funding_rate, position.size)?;
+    let funding_rate_fee_value = priced_position_asset.query_price(&deps.querier)? * funding_rate_fee_in_position_asset;
+    println!("funding_rate_fee_in_position_assets {}", funding_rate_fee_in_position_asset);
+    println!("funding_rate_fee_value {}", funding_rate_fee_value);
+    println!("position_fee_in_collateral_asset {}", position_fee_in_collateral_asset);
     // recompute total fees in collateral asset
     let total_fees_value = position_fee_value + funding_rate_fee_value;
     let total_fees_in_collateral_asset = total_fees_value
@@ -276,13 +269,8 @@ pub fn increase_position(
         if asset.info == position_asset.info {
             asset.occupied_reserves = new_position_asset_occupied_reserves;
             asset.available_reserves = new_position_asset_available_reserves;
-            match &new_position_funding_rate_result {
-                Some(new_position_funding_rate_result) => {
-                    asset.cumulative_funding_rate = new_position_funding_rate_result.funding_rate;
-                    asset.last_funding_time = new_position_funding_rate_result.last_funding_time;
-                }
-                None => (),
-            }
+            asset.cumulative_funding_rate += new_position_funding_rate_delta.funding_rate;
+            asset.last_funding_time = new_position_funding_rate_delta.last_funding_time;
         } else if asset.info == collateral_asset.info {
             asset.fee_reserves = new_collateral_asset_fee_reserves;
             asset.net_protocol_liabilities = new_collateral_asset_liabilities;
@@ -312,9 +300,9 @@ struct FundingRateResult {
     last_funding_time: Uint128
 }
 
-// updates the funding rate on a basket asset by comparing the current time to the last time the funding rate was updated
-// TODO: Implement this
-fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Option<FundingRateResult> {
+// purely calculates the funding rate new aggregate that should be applied
+// to a basket asset by comparing the current time to the last time the funding rate was updated
+fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> FundingRateResult {
     println!("time: {:?}", env.block.time);
     // get the current time
     let current_time = Uint128::from(env.block.time.nanos());
@@ -325,16 +313,19 @@ fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Option<Fundin
     // not exactly sure why we need to multiply ration here but its done here
     // https://github.com/gmx-io/gmx-contracts/commit/63c5e726bee5ce875ec02ac81584111a9fd73431
     if last_time == Uint128::new(0) {
-        return Some(FundingRateResult {
+        return FundingRateResult {
             funding_rate: basket_asset.cumulative_funding_rate,
             last_funding_time: current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL
-        })
+        }
     }
 
     // If the current time is greater than the last time the funding rate was updated
     // we don't need to update the funding rate, since not enough time has passed
     if last_time + FUNDING_RATE_INTERVAL > current_time {
-        return None;
+        return FundingRateResult {
+            funding_rate: basket_asset.cumulative_funding_rate,
+            last_funding_time: basket_asset.last_funding_time
+        }
     }
     
     // in this case the current time is greater than the last time the funding rate was updated + a funding rate interval
@@ -343,18 +334,16 @@ fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Option<Fundin
     // TODO: Investigate if we are adding units properly here, we probably need funding interval precision in nanos here
     // i.e. 1_000_000 or 3_600_000_000_000(hours to nano seconds) or something
     // Once again doing this multiplication + division from the github link above, but might not need it
-
-    let funding_rate = _calculate_funding_rate(env, basket_asset);
+    let funding_rate_delta = calculate_funding_rate_delta(env, basket_asset.clone());
     let last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL; 
-    Some(
-        FundingRateResult {
-            funding_rate,
-            last_funding_time
-        }
-    )
+    println!("funding rate: {:?} last funding time{:?}", funding_rate_delta, last_funding_time);
+    FundingRateResult {
+        funding_rate: basket_asset.cumulative_funding_rate + funding_rate_delta,
+        last_funding_time
+    }
 }
 
-fn _calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Uint128 {
+fn calculate_funding_rate_delta(env: &Env, basket_asset: BasketAsset) -> Uint128 {
     let last_time = basket_asset.last_funding_time;
     let current_time = Uint128::from(env.block.time.nanos());
 
@@ -366,7 +355,7 @@ fn _calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> Uint128 {
     let intervals = (current_time - last_time)/FUNDING_RATE_INTERVAL;
     // TODO: Need to determine if the asset is stable or not, and both should have different
     // utilization curves
-
+    println!("intervals {} time diff {} const interval {}", intervals,current_time - last_time,  FUNDING_RATE_INTERVAL);
     // calculate the funding rate by taking the utilized reserves and dividing it 
     // the amount of total outstanding reservs and multiply that times the intervals
     // note this will take the current utilization rate and multiply it for past intervals...
@@ -382,11 +371,15 @@ fn get_funding_fee(
     entry_funding_rate: Uint128,
     size: Uint128,
 ) -> Result<Uint128, ContractError> {
+    println!("cumulative_funding_rate: {:?}", cumulative_funding_rate);
+    println!("entry_funding_rate: {:?}", entry_funding_rate);
+    println!("size: {:?}", size);
+    println!("FUNDING_RATE_PRECISION: {:?}", FUNDING_RATE_PRECISION);
     if size == Uint128::new(0) {
         Ok(Uint128::new(0))
     } else {
-        let funding_rate_fee = cumulative_funding_rate.checked_sub(entry_funding_rate).unwrap();
-        Ok(funding_rate_fee.checked_mul(size).unwrap().checked_div(FUNDING_RATE_PRECISION).unwrap())    
+        let funding_rate_fee = cumulative_funding_rate - entry_funding_rate;
+        Ok(funding_rate_fee.multiply_ratio(size, FUNDING_RATE_PRECISION))  
     }
 }
 

@@ -11,8 +11,9 @@ use crate::{
 };
 
 use cosmwasm_std::{coins, Binary};
-use cosmwasm_std::testing::{mock_env, mock_info, MOCK_CONTRACT_ADDR, MockStorage, MockApi};
+use cosmwasm_std::testing::{ mock_env, mock_info, MOCK_CONTRACT_ADDR, MockStorage, MockApi, };
 use cosmwasm_std::{
+    Timestamp,
     OwnedDeps, attr, from_binary, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Coin, CosmosMsg,
     QueryRequest, ReplyOn, StdError::GenericErr, SubMsg, Uint128, WasmMsg,
 };
@@ -1230,7 +1231,7 @@ fn multiple_deposits_and_swap_and_withdraw() {
 /// Check that the second deposit has fees subtracted from the LP tokens they receive
 /// For later: check that the correct amount of fees are taken
 #[test]
-fn increase_position_same_asset_precise() {
+fn increase_position_same_asset_precise_twice() {
     use crate::state::BASKET;
     let sender = "addr0000";
 
@@ -1243,10 +1244,10 @@ fn increase_position_same_asset_precise() {
 
     let mut basket: Basket = query_basket(deps.as_ref()).unwrap();
     basket.lp_token_address = Addr::unchecked(FAKE_LP_TOKEN_ADDRESS);
-    basket.assets[0].available_reserves = Uint128::new(12_345_670);
+    basket.assets[0].available_reserves = Uint128::new(24_691_340);
     BASKET.save(deps.as_mut().storage, &basket).unwrap();
 
-    // Should be depositing 1 Luna as collateral and longing 10
+    // Should be depositing 1.2 Luna as collateral and longing 12
     let increase_position = ExecuteMsg::IncreasePosition {
         position_asset: Asset {
             info: luna_info.clone(),
@@ -1271,7 +1272,7 @@ fn increase_position_same_asset_precise() {
     let expected_attributes = vec![
         attr("action", "increase_position"),
         attr("occupied_reserves", "12345670"),
-        attr("available_reserves", "0"),
+        attr("available_reserves", "12345670"),
         attr("position_fee_in_collateral_asset", "12345"),
         attr("position_fee_value", "1234567"),
         attr("funding_rate_fee_value", "0"),
@@ -1279,12 +1280,66 @@ fn increase_position_same_asset_precise() {
         attr("position.collateral_amount", "1234567"),
         attr("size", "12345670"),
     ];
-    // TODO: NEED TO CHECK ACTUAL ATTRIBUTES
+
     for i in 0..expected_attributes.len() {
         let actual_attribute = increase_res.attributes[i].clone();
         let expected_attribute = expected_attributes[i].clone();
         assert_eq!(actual_attribute, expected_attribute);
     }
+
+    println!("SECOND INCREASE POSITION");
+
+    // Should be depositing 1.2 Luna as collateral and longing 12
+    let increase_position2 = ExecuteMsg::IncreasePosition {
+        position_asset: Asset {
+            info: luna_info.clone(),
+            amount: Uint128::new(12_345_670),
+        },
+        collateral_asset: Asset {
+            info: luna_info.clone(),
+            amount: Uint128::new(1_234_567),
+        },
+        leverage_amount: Uint128::new(12_345_670),
+        is_long: true
+    };
+
+    let increaser = mock_info(sender, &coins(1_234_567, "luna"));
+    let env = mock_env();
+    let mut mutable_env = env.clone();
+
+    mutable_env.block.time = Timestamp::from_nanos(1_571_883_819_879_305_533);
+    // let env =     Env {
+    //     block: BlockInfo {
+    //         height: 12_345,
+    //         time: Timestamp::from_nanos(1_571_797_419_879_305_533),
+    //         chain_id: "cosmos-testnet-14002".to_string(),
+    //     },
+    //     contract: ContractInfo {
+    //         address: Addr::unchecked(MOCK_CONTRACT_ADDR),
+    //     },
+    // }
+    // env
+    let increase_res = execute(deps.as_mut(), mutable_env, increaser, increase_position2).unwrap();
+
+    let expected_attributes = vec![
+        attr("action", "increase_position"),
+        attr("occupied_reserves", "24691340"),
+        attr("available_reserves", "0"),
+        attr("position_fee_in_collateral_asset", "12345"),
+        attr("position_fee_value", "1234567"),
+        attr("funding_rate_fee_value", "886400"),
+        attr("total_fees_value", "2120967"),
+        attr("position.collateral_amount", "2469134"),
+        attr("size", "24691340"),
+    ];
+
+    for i in 0..expected_attributes.len() {
+        let actual_attribute = increase_res.attributes[i].clone();
+        let expected_attribute = expected_attributes[i].clone();
+        assert_eq!(actual_attribute, expected_attribute);
+    }
+
+
 }
 
 #[test]
@@ -1308,7 +1363,7 @@ fn increase_position_diff_asset_precise() {
     basket.assets[0].available_reserves = Uint128::new(12_345_670);
     BASKET.save(deps.as_mut().storage, &basket).unwrap();
 
-    // Should be depositing 1 Luna as collateral and longing 10
+    // Should be depositing 123 UST collateral and longing 12 LUNA
     let increase_position = ExecuteMsg::IncreasePosition {
         position_asset: Asset {
             info: luna_info.clone(),
@@ -1341,7 +1396,7 @@ fn increase_position_diff_asset_precise() {
         attr("position.collateral_amount", "123456700"),
         attr("size", "12345670"),
     ];
-    // TODO: NEED TO CHECK ACTUAL ATTRIBUTES
+
     for i in 0..expected_attributes.len() {
         let actual_attribute = increase_res.attributes[i].clone();
         let expected_attribute = expected_attributes[i].clone();

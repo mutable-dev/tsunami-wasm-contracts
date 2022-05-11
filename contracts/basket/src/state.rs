@@ -63,6 +63,8 @@ pub struct BasketAsset {
     pub shortable_token: bool,
 
     /// The cumulative funding rate for the asset
+    /// Denominated in kind to represent the & of interest that has been charged for that asset
+    /// With 6 decimals of precision 718 = .0718% worth of interest
     pub cumulative_funding_rate: Uint128,
 
     /// Last time the funding rate was updated
