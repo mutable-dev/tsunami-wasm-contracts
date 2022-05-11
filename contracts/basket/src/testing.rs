@@ -1307,18 +1307,8 @@ fn increase_position_same_asset_precise_twice() {
     let env = mock_env();
     let mut mutable_env = env.clone();
 
+    // fast forward 1 day
     mutable_env.block.time = Timestamp::from_nanos(1_571_883_819_879_305_533);
-    // let env =     Env {
-    //     block: BlockInfo {
-    //         height: 12_345,
-    //         time: Timestamp::from_nanos(1_571_797_419_879_305_533),
-    //         chain_id: "cosmos-testnet-14002".to_string(),
-    //     },
-    //     contract: ContractInfo {
-    //         address: Addr::unchecked(MOCK_CONTRACT_ADDR),
-    //     },
-    // }
-    // env
     let increase_res = execute(deps.as_mut(), mutable_env, increaser, increase_position2).unwrap();
 
     let expected_attributes = vec![
