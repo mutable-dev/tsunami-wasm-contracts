@@ -3,15 +3,15 @@
     "counter": {
       "codeId": "2",
       "contractAddresses": {
-        "default": "terra1wv8sf87jpy2cfdux2ftjy9enddehmz9mhsjnpx"
+        "default": "terra1qxxlalvsdjd07p07y3rc5fu6ll8k4tme7cye8y"
       }
     }
   },
   "testnet": {
     "basket": {
-      "codeId": "70995",
+      "codeId": "71063",
       "contractAddresses": {
-        "default": "terra17832qjy8fpz5gqleee70pdpcjkcnpfep0v68vr"
+        "default": "terra1wv8sf87jpy2cfdux2ftjy9enddehmz9mhsjnpx"
       }
     }
   }
