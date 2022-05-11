@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Timestamp, StdResult, DepsMut};
+use cosmwasm_std::{Addr, Uint128, QuerierWrapper, Timestamp, StdResult};
 use cw_storage_plus::{Item, Map};
 use crate::error::ContractError;
 use crate::asset::{Asset, AssetInfo, safe_u128_to_i64, PricedAsset};

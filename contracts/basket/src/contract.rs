@@ -133,7 +133,6 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     Ok(Response::new().add_attribute("liquidity_token_addr", basket.lp_token_address))
 }
 
-// will receive 
 // context from https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L563
 // TODO: enable shorting
 // TODO: implement the validate health method to validate a position is still good
@@ -247,7 +246,7 @@ pub fn increase_position(
     position.clone().validate_health(
         &mut PricedAsset::new(collateral_asset.clone(), collateral_basket_asset.clone()),
         &mut PricedAsset::new(position_asset.clone(), position_basket_asset.clone()),
-        deps.querier.clone()
+        deps.querier
     )?;
 
     // increase occupied assets by the amount of new position
