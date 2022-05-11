@@ -156,6 +156,7 @@ pub fn increase_position(
     let position_basket_asset = basket.assets.iter().find(|asset| asset.info == position_asset.info)
         .ok_or(ContractError::AssetNotInBasket)?;
 
+    println!("its position asset");
     let collateral_basket_asset = basket.assets.iter().find(|asset| asset.info == collateral_asset.info)
         .ok_or(ContractError::AssetNotInBasket)?;
 
@@ -428,7 +429,7 @@ pub fn withdraw_liquidity(
         redemption_value.multiply_ratio(BASIS_POINTS_PRECISION - fee_bps, BASIS_POINTS_PRECISION);
 
     let decimals = ask_asset.query_decimals(&deps.querier)?;
-    let redemption_amount = redemption_value.multiply_ratio(Uint128::from(10_u64).pow(decimals as u32), ask_asset.query_price(&deps.querier)?.to_Uint128(-decimals)?);
+    let redemption_amount = redemption_value.multiply_ratio(Uint128::from(10_u64).pow(decimals as u32), ask_asset.query_pyth_price(&deps.querier)?.to_Uint128(-decimals)?);
     let redemption_asset = Asset {
         amount: redemption_amount,
         info: ask_asset.asset.info,

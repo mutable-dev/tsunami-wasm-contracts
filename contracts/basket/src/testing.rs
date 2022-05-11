@@ -1343,7 +1343,7 @@ fn increase_position_diff_asset_precise() {
     };
 
     let ust_info = AssetInfo::NativeToken {
-        denom: "ust".to_string(),
+        denom: "uusd".to_string(),
     };
 
     let mut deps = instantiate_setup(sender);
@@ -1372,7 +1372,7 @@ fn increase_position_diff_asset_precise() {
         &[(&String::from(sender), &Uint128::from(1100000000_u32))],
     )]);
 
-    let increaser = mock_info(sender, &coins(123_456_700, "ust"));
+    let increaser = mock_info(sender, &coins(123_456_700, "uusd"));
     let increase_res = execute(deps.as_mut(), mock_env(), increaser, increase_position).unwrap();
 
     let expected_attributes = vec![
