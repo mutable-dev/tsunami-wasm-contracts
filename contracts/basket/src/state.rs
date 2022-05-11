@@ -432,8 +432,8 @@ impl Position {
         let size = self.size;
         let position_price =  priced_position_asset.query_price(&querier)?;
         let collateral_price = priced_collateral_asset.query_price(&querier)?;
-        let position_value = size * position_price;
-        let collateral_value = self.collateral_amount * collateral_price;
+        let position_value = size.multiply_ratio(position_price, Uint128::new(1));
+        let collateral_value = self.collateral_amount.multiply_ratio(collateral_price, Uint128::new(1));
         // Collateral must be worth 5% more than position value to be healthy
         if position_value.multiply_ratio(Uint128::new(105), Uint128::new(100)) > collateral_value {
             Ok(true)

@@ -29,7 +29,7 @@ const FUNDING_RATE_PRECISION: Uint128 = Uint128::new(1_000_000);
 const BASE_FEE_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 const PENALTY_IN_BASIS_POINTS: Uint128 = Uint128::new(15);
 // Represents the 8 hour interval in nano seconds
-const FUNDING_RATE_INTERVAL: Uint128 = Uint128::new(28800000000000);
+const FUNDING_RATE_INTERVAL: Uint128 = Uint128::new(8 * 60 * 60 * 1_000_000_000);
 // Represents the funding rate fee per interval
 // Should represent 70% APY on an annualized basis: when multiplied by 365 days * 4 intervals a day
 const FUNDING_RATE_FACTOR: Uint128 = Uint128::new(479);
@@ -160,7 +160,7 @@ pub fn increase_position(
         .ok_or(ContractError::AssetNotInBasket)?;
 
     // get the composite key of the user + asset id + direction
-    let asset_key: String = match &position_asset.info {
+    let position_asset_key: String = match &position_asset.info {
         AssetInfo::Token{contract_addr} => contract_addr.to_string(),
         AssetInfo::NativeToken{denom} => denom.to_string(),
     };
@@ -173,7 +173,7 @@ pub fn increase_position(
     let new_position_funding_rate_delta = calculate_funding_rate(&env, position_basket_asset.clone());
     
     // get the position of the user from deps.storage, may be none
-    let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), asset_key.as_bytes(), is_long.to_string()))?;
+    let position_option = POSITIONS.may_load(deps.storage, (info.sender.as_bytes(), position_asset_key.as_bytes(), is_long.to_string()))?;
     let mut position: Position = Position::new(info.sender.clone(), &position_basket_asset.info);
     match &position_option {
         Some(p) => { position = p.clone(); },
@@ -296,7 +296,7 @@ pub fn increase_position(
 }
 
 
-struct FundingRateResult {
+pub struct FundingRateResult {
     funding_rate: Uint128,
     last_funding_time: Uint128
 }
@@ -316,7 +316,7 @@ fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> FundingRateRe
     if last_time == Uint128::new(0) {
         return FundingRateResult {
             funding_rate: basket_asset.cumulative_funding_rate,
-            last_funding_time: current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL
+            last_funding_time: current_time.multiply_ratio(FUNDING_RATE_INTERVAL, FUNDING_RATE_INTERVAL)
         }
     }
 
@@ -336,7 +336,7 @@ fn calculate_funding_rate(env: &Env, basket_asset: BasketAsset) -> FundingRateRe
     // i.e. 1_000_000 or 3_600_000_000_000(hours to nano seconds) or something
     // Once again doing this multiplication + division from the github link above, but might not need it
     let funding_rate_delta = calculate_funding_rate_delta(env, basket_asset.clone());
-    let last_funding_time = current_time * FUNDING_RATE_INTERVAL / FUNDING_RATE_INTERVAL; 
+    let last_funding_time = current_time.multiply_ratio(FUNDING_RATE_INTERVAL, FUNDING_RATE_INTERVAL); 
     println!("funding rate: {:?} last funding time{:?}", funding_rate_delta, last_funding_time);
     FundingRateResult {
         funding_rate: basket_asset.cumulative_funding_rate + funding_rate_delta,
@@ -362,7 +362,7 @@ fn calculate_funding_rate_delta(env: &Env, basket_asset: BasketAsset) -> Uint128
     // note this will take the current utilization rate and multiply it for past intervals...
     // meaning we need this function to be called every hour or so, oherwise we may be charging 
     // a funding rate inaccurately to what is being presented on the UI
-    FUNDING_RATE_FACTOR * basket_asset.occupied_reserves * intervals / (
+    FUNDING_RATE_FACTOR.multiply_ratio(basket_asset.occupied_reserves * intervals,
         basket_asset.available_reserves + basket_asset.occupied_reserves)
 }
 
